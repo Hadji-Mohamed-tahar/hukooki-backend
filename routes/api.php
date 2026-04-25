@@ -1,8 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
-// استيراد الـ Controllers من المجلد الجديد Api
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\DocumentController;
@@ -12,9 +10,14 @@ use App\Http\Controllers\Api\ProfileController;
 
 /*
 |--------------------------------------------------------------------------
-| 1. مسارات المصادقة العامة (Public Auth)
+| 1. المسارات العامة (Public Routes)
 |--------------------------------------------------------------------------
 */
+
+// هذا المسار لن يفتح صفحة، لكنه يمنع النظام من الانهيار عند توليد رابط الإيميل
+Route::get('reset-password/{token}', function (string $token) {
+    return response()->json(['token' => $token]);
+})->middleware('guest')->name('password.reset');
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
@@ -23,62 +26,83 @@ Route::prefix('auth')->group(function () {
     Route::post('reset-password', [AuthController::class, 'resetPassword']);
 });
 
-// دخول الأدمن (عام)
+// دخول الأدمن
 Route::post('admin/auth/login', [AdminAuthController::class, 'login']);
+
+// تصنيفات الوثائق (مشاهدة فقط للجميع)
+Route::get('document-types', [DocumentTypeController::class, 'index']);
+Route::get('document-types/{documentType}', [DocumentTypeController::class, 'show']);
 
 /*
 |--------------------------------------------------------------------------
-| 2. مسارات المستخدمين المحمية (Authenticated Users)
+| 2. مسارات المستخدمين (User Guard: api)
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth:api')->group(function () {
 
-    // الخروج وتجديد التوكن
-    Route::post('auth/logout', [AuthController::class, 'logout']);
-    Route::post('auth/refresh', [AuthController::class, 'refresh']);
-
-    // الملف الشخصي للمستخدم
-    Route::get('profile', [ProfileController::class, 'show']);
-    Route::put('profile', [ProfileController::class, 'update']);
-
-    // تصفح الوثائق المتاحة للمستخدم
-    Route::get('documents', [DocumentController::class, 'index']);
-    Route::get('documents/{id}', [DocumentController::class, 'show']);
-
-    // جلب الحقول الخاصة بكل وثيقة للمستخدم العادي
-    Route::middleware('auth:api')->group(function () {
-        Route::get('documents/{document}/fields', [\App\Http\Controllers\Api\UserDocumentController::class, 'getFields']);
+    // إدارة الجلسة
+    Route::prefix('auth')->group(function () {
+        Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('refresh', [AuthController::class, 'refresh']);
     });
 
-    // العمليات على وثائق المستخدم (توليد وتحميل)
-    Route::post('documents/{id}/generate-pdf', [UserDocumentController::class, 'generate']);
-    Route::get('user-documents', [UserDocumentController::class, 'index']);
-    Route::get('user-documents/{id}', [UserDocumentController::class, 'show']);
-    Route::get('user-documents/{id}/download', [UserDocumentController::class, 'download']);
+    // الملف الشخصي
+    Route::prefix('profile')->group(function () {
+        Route::get('/', [ProfileController::class, 'show']);
+        Route::put('/', [ProfileController::class, 'update']);
+    });
+
+    // تصفح القوالب المتاحة
+    Route::get('documents', [DocumentController::class, 'index']);
+    Route::get('documents/{document}', [DocumentController::class, 'show']);
+    Route::get('documents/{document}/fields', [DocumentController::class, 'getFields']);
+
+    // وثائق المستخدم (المولدة)
+    Route::prefix('user-documents')->group(function () {
+        Route::get('/', [UserDocumentController::class, 'index']);
+        Route::post('generate/{document}', [UserDocumentController::class, 'generate']); 
+        Route::get('{userDocument}', [UserDocumentController::class, 'show']);
+        Route::get('{userDocument}/download', [UserDocumentController::class, 'download']);
+    });
 });
 
 /*
 |--------------------------------------------------------------------------
-| 3. مسارات الإدارة المحمية (Authenticated Admin)
+| 3. مسارات الإدارة (Admin Guard: admin)
 |--------------------------------------------------------------------------
 */
-// نستخدم guard 'admin' والميدل وير الجديد 'is_admin'
-Route::group(['middleware' => ['auth:admin', 'is_admin'], 'prefix' => 'admin'], function () {
+Route::group(['middleware' => ['auth:admin'], 'prefix' => 'admin'], function () {
 
-    // مصادقة الأدمن
-    Route::post('auth/logout', [AdminAuthController::class, 'logout']);
-    Route::post('auth/refresh', [AdminAuthController::class, 'refresh']);
-    Route::get('profile', [AdminAuthController::class, 'adminProfile']);
+    // إدارة جلسة الأدمن
+    Route::prefix('auth')->group(function () {
+        Route::post('logout', [AdminAuthController::class, 'logout']);
+        Route::post('refresh', [AdminAuthController::class, 'refresh']);
+        Route::get('profile', [AdminAuthController::class, 'adminProfile']);
+    });
 
-    // إدارة أنواع الوثائق (CRUD)
-    Route::apiResource('document-types', DocumentTypeController::class);
-
-    // إدارة قوالب الوثائق (CRUD)
+    // إدارة الأنواع والقوالب
+    // ملاحظة: جعلنا الـ document-types تستثني الـ index و show لأنها موجودة في المسارات العامة
+    Route::apiResource('document-types', DocumentTypeController::class)->except(['index', 'show']);
     Route::apiResource('documents', DocumentController::class);
 
-    // إدارة الحقول الخاصة بكل وثيقة
-    Route::get('documents/{document}/fields', [DocumentController::class, 'getFields']);
-    Route::post('documents/{document}/fields', [DocumentController::class, 'storeField']);
-    Route::put('documents/{document}/fields/{field}', [DocumentController::class, 'updateField']);
-    Route::delete('documents/{document}/fields/{field}', [DocumentController::class, 'destroyField']);
+    // إدارة الحقول (Nested Resources)
+    Route::prefix('documents/{document}/fields')->group(function () {
+        Route::get('/', [DocumentController::class, 'getFields']);
+        Route::post('/', [DocumentController::class, 'storeField']);
+        Route::put('{field}', [DocumentController::class, 'updateField']);
+        Route::delete('{field}', [DocumentController::class, 'destroyField']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| 4. معالجة الروابط غير الموجودة (Fallback)
+|--------------------------------------------------------------------------
+*/
+Route::fallback(function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'الرابط المطلوب غير موجود.',
+        'error_code' => 'ROUTE_NOT_FOUND'
+    ], 404);
 });

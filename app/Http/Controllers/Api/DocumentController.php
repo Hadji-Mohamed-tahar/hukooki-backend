@@ -4,75 +4,90 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\DocumentService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class DocumentController extends Controller
 {
+    use ApiResponse;
+
     protected $documentService;
 
     public function __construct(DocumentService $documentService)
     {
         $this->documentService = $documentService;
-        // ملاحظة: الحماية تتم في ملف api.php لضمان توافق Laravel 11
     }
 
+    /**
+     * جلب كافة القوالب
+     */
     public function index(): JsonResponse
     {
         $documents = $this->documentService->getAllDocuments();
-        return response()->json($documents);
+        return $this->successResponse($documents, "تم جلب قائمة القوالب بنجاح");
     }
 
+    /**
+     * جلب تفاصيل قالب محدد
+     */
     public function show(int $id): JsonResponse
     {
+        // الخدمة سترمي ModelNotFoundException تلقائياً إذا لم يتواجد المعرف
+        // ومعالج الأخطاء العالمي سيحوله لرد 404 موحد.
         $document = $this->documentService->getDocumentById($id);
-        return response()->json($document);
+        return $this->successResponse($document, "تم جلب تفاصيل القالب");
     }
 
+    /**
+     * تخزين قالب جديد مع ملفاته
+     */
     public function store(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $validatedData = $request->validate([
             'name'             => 'required|string|max:255',
             'document_type_id' => 'required|exists:document_types,id',
-            'template_file'    => 'required|file|mimes:html,txt', // تأكد من صيغ الملفات المدعومة
-            'price'            => 'nullable|numeric',
-            'visibility'       => 'nullable|in:free,basic,pro,private',
+            'template_file'    => 'required|file|mimes:html,txt,blade.php',
+            'price'            => 'nullable|numeric|min:0',
+            // 'visibility'       => 'nullable|in:free,basic,pro,private',
+            'visibility' => 'nullable|in:public,private',
             'fields'           => 'nullable|array',
             'fields.*.name'    => 'required|string',
             'fields.*.type'    => 'required|string',
+            'fields.*.label'   => 'nullable|string',
+            'fields.*.required' => 'boolean',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        // نمرر الـ request بالكامل للخدمة لأنها تعالج الملف والحقول
-        $document = $this->documentService->createDocument($request->all());
-        return response()->json($document, 201);
+        $document = $this->documentService->createDocument($validatedData);
+        return $this->successResponse($document, "تم إنشاء القالب وتخزين الملف بنجاح", 201);
     }
 
+    /**
+     * تحديث بيانات قالب
+     */
     public function update(Request $request, int $id): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $validatedData = $request->validate([
             'name'             => 'sometimes|string|max:255',
             'document_type_id' => 'sometimes|exists:document_types,id',
-            'template_file'    => 'sometimes|file|mimes:html,txt',
+            'template_file'    => 'sometimes|file|mimes:html,txt,blade.php',
+            'price'            => 'sometimes|numeric|min:0',
+            // 'visibility'       => 'sometimes|in:free,basic,pro,private',
+            'visibility' => 'sometimes|in:public,private', // تم التعديل لتطابق الـ Migration
             'fields'           => 'nullable|array',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $document = $this->documentService->updateDocument($id, $request->all());
-        return response()->json($document);
+        $document = $this->documentService->updateDocument($id, $validatedData);
+        return $this->successResponse($document, "تم تحديث بيانات القالب بنجاح");
     }
 
+    /**
+     * حذف قالب والملفات المرتبطة
+     */
     public function destroy(int $id): JsonResponse
     {
         $this->documentService->deleteDocument($id);
-        return response()->json(['message' => 'تم حذف الوثيقة بنجاح'], 200);
+        return $this->successResponse(null, "تم حذف القالب والملفات المرتبطة به بنجاح");
     }
 
     // --- إدارة حقول الوثيقة (Document Fields) ---
@@ -80,43 +95,37 @@ class DocumentController extends Controller
     public function getFields(int $documentId): JsonResponse
     {
         $fields = $this->documentService->getDocumentFields($documentId);
-        return response()->json($fields);
+        return $this->successResponse($fields, "تم جلب حقول القالب");
     }
 
     public function storeField(Request $request, int $documentId): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string',
-            'type' => 'required|string',
-            'label' => 'nullable|string',
+        $validatedData = $request->validate([
+            'name'     => 'required|string',
+            'type'     => 'required|string',
+            'label'    => 'nullable|string',
+            'required' => 'boolean'
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $field = $this->documentService->createDocumentField($documentId, $request->all());
-        return response()->json($field, 201);
+        $field = $this->documentService->createDocumentField($documentId, $validatedData);
+        return $this->successResponse($field, "تم إضافة الحقل بنجاح", 201);
     }
 
     public function updateField(Request $request, int $documentId, int $fieldId): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $validatedData = $request->validate([
             'name' => 'sometimes|string',
             'type' => 'sometimes|string',
+            'label' => 'sometimes|string',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $field = $this->documentService->updateDocumentField($fieldId, $request->all());
-        return response()->json($field);
+        $field = $this->documentService->updateDocumentField($fieldId, $validatedData);
+        return $this->successResponse($field, "تم تحديث بيانات الحقل");
     }
 
     public function destroyField(int $documentId, int $fieldId): JsonResponse
     {
         $this->documentService->deleteDocumentField($fieldId);
-        return response()->json(['message' => 'تم حذف الحقل بنجاح'], 200);
+        return $this->successResponse(null, "تم حذف الحقل بنجاح");
     }
 }

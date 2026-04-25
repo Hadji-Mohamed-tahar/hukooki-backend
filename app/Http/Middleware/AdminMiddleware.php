@@ -8,10 +8,14 @@ use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Auth;
 use Tymon\JWTAuth\Exceptions\TokenExpiredException;
 use Tymon\JWTAuth\Exceptions\TokenInvalidException;
-use Tymon\JWTAuth\Facades\JWTAuth;
+use Tymon\JWTAuth\Exceptions\JWTException;
+use App\Traits\ApiResponse;
+use Throwable;
 
 class AdminMiddleware
 {
+    use ApiResponse;
+
     /**
      * معالجة الطلب والتأكد من أن المستخدم "أدمن"
      */
@@ -19,29 +23,36 @@ class AdminMiddleware
     {
         try {
             // 1. محاولة جلب المستخدم المرتبط بالتوكن باستخدام Guard الأدمن
-            // هذا يضمن أننا نبحث في جدول admins وليس users
             $admin = Auth::guard('admin')->user();
 
-            // 2. التحقق من وجود المستخدم وأنه يتبع موديل Admin فعلياً
+            // 2. التحقق من وجود المستخدم وصلاحيته كأدمن
             if (!$admin || !($admin instanceof \App\Models\Admin)) {
-                return response()->json([
-                    "status" => "error",
-                    "message" => "غير مصرح لك بالوصول: هذا الحساب ليس مديراً نظام"
-                ], 403);
+                return $this->errorResponse(
+                    "غير مصرح لك بالوصول: هذا الحساب ليس مديراً نظام", 
+                    "FORBIDDEN_ACCESS", 
+                    403
+                );
             }
 
-        } catch (\Exception $e) {
-            // 3. معالجة حالات الخطأ الخاصة بالتوكن (JWT)
-            if ($e instanceof TokenInvalidException) {
-                return response()->json(["status" => "error", "message" => "التوكن غير صالح"], 401);
-            } else if ($e instanceof TokenExpiredException) {
-                return response()->json(["status" => "error", "message" => "انتهت صلاحية التوكن"], 401);
-            } else {
-                return response()->json(["status" => "error", "message" => "لم يتم العثور على توكن الصلاحية"], 401);
-            }
+        } catch (TokenInvalidException $e) {
+            return $this->errorResponse("التوكن المرسل غير صالح", "INVALID_TOKEN", 401);
+            
+        } catch (TokenExpiredException $e) {
+            return $this->errorResponse("انتهت صلاحية التوكن، يرجى تجديد الدخول", "TOKEN_EXPIRED", 401);
+            
+        } catch (JWTException $e) {
+            return $this->errorResponse("مشكلة في توكن الصلاحية: غير موجود أو تالف", "JWT_ERROR", 401);
+            
+        } catch (Throwable $e) {
+            // معالجة أي خطأ برمي غير متوقع
+            return $this->errorResponse(
+                "حدث خطأ أثناء معالجة الصلاحيات", 
+                "AUTH_INTERNAL_ERROR", 
+                500,
+                config('app.debug') ? $e->getMessage() : null
+            );
         }
 
-        // إذا نجحت كل الفحوصات، انتقل للطلب التالي
         return $next($request);
     }
 }

@@ -1,0 +1,20 @@
+{
+  "include": [
+    "app/Http/Controllers/Api/**",
+    "app/Http/Middleware/**",
+    "app/Services/**",
+    "app/Traits/**",
+    "database/migrations/**",
+    "routes/**"
+  ],
+  "ignore": {
+    "customPatterns": [
+      "database/migrations/.gitkeep"
+    ]
+  },
+  "output": {
+    "filePath": "Hokoki_Logic_Backup.txt",
+    "headerText": "Hokoki Backend Logic - Full Export (Controllers, Services, Middlewares, Traits, Migrations, Routes)",
+    "showTree": true
+  }
+}

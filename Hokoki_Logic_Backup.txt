@@ -1,0 +1,1767 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+- Pay special attention to the Repository Description. These contain important context and guidelines specific to this project.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: app/Http/Controllers/Api/**, app/Http/Middleware/**, app/Services/**, app/Traits/**, database/migrations/**, routes/**
+- Files matching these patterns are excluded: database/migrations/.gitkeep
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<user_provided_header>
+Hokoki Backend Logic - Full Export (Controllers, Services, Middlewares, Traits, Migrations, Routes)
+</user_provided_header>
+
+<directory_structure>
+app/Http/Controllers/Api/AdminAuthController.php
+app/Http/Controllers/Api/AuthController.php
+app/Http/Controllers/Api/DocumentController.php
+app/Http/Controllers/Api/DocumentTypeController.php
+app/Http/Controllers/Api/ProfileController.php
+app/Http/Controllers/Api/UserDocumentController.php
+app/Http/Middleware/AdminMiddleware.php
+app/Services/AdminAuthService.php
+app/Services/AuthService.php
+app/Services/DocumentService.php
+app/Services/DocumentTypeService.php
+app/Services/ProfileService.php
+app/Services/UserDocumentService.php
+app/Traits/ApiResponse.php
+database/migrations/0001_01_01_000000_create_users_table.php
+database/migrations/0001_01_01_000001_create_cache_table.php
+database/migrations/0001_01_01_000002_create_jobs_table.php
+database/migrations/2026_04_07_123410_create_document_types_table.php
+database/migrations/2026_04_07_123410_create_documents_table.php
+database/migrations/2026_04_07_123411_create_document_fields_table.php
+database/migrations/2026_04_07_123411_create_user_documents_table.php
+database/migrations/2026_04_07_123412_create_admins_table.php
+database/migrations/2026_04_07_200254_create_personal_access_tokens_table.php
+routes/api.php
+routes/console.php
+routes/web.php
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/Http/Controllers/Api/AdminAuthController.php">
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\AdminAuthService;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class AdminAuthController extends Controller
+{
+    use ApiResponse;
+
+    protected $adminAuthService;
+
+    public function __construct(AdminAuthService $adminAuthService)
+    {
+        $this->adminAuthService = $adminAuthService;
+    }
+
+    /**
+     * تسجيل دخول الأدمن
+     */
+    public function login(Request $request): JsonResponse
+    {
+        // التعديل: الـ ValidationException سيُعالج تلقائياً في app.php 
+        // وسيعيد كود VALIDATION_ERROR كما حددنا سابقاً.
+        $validatedData = $request->validate([
+            'username' => 'required|string',
+            'password' => 'required|string',
+        ]);
+
+        $result = $this->adminAuthService->login($validatedData);
+
+        if (!$result) {
+            // التعديل: توحيد كود الخطأ ليكون أكثر دقة
+            return $this->errorResponse("بيانات دخول المسؤول غير صحيحة", "ADMIN_UNAUTHORIZED", 401);
+        }
+
+        return $this->successResponse($result, "تم تسجيل دخول المسؤول بنجاح");
+    }
+
+    /**
+     * تسجيل الخروج
+     */
+    public function logout(): JsonResponse
+    {
+        $this->adminAuthService->logout();
+        return $this->successResponse(null, "تم تسجيل الخروج بنجاح");
+    }
+
+    /**
+     * تجديد التوكن الخاص بالأدمن
+     */
+    public function refresh(): JsonResponse
+    {
+        $result = $this->adminAuthService->refresh();
+        
+        if (!$result) {
+            // التعديل: استخدام SESSION_EXPIRED لتوحيد المنطق مع الـ User Auth
+            return $this->errorResponse("فشل تجديد جلسة المسؤول، يرجى الدخول مجدداً", "SESSION_EXPIRED", 401);
+        }
+
+        return $this->successResponse($result, "تم تجديد توكن المسؤول بنجاح");
+    }
+
+    /**
+     * عرض الملف الشخصي للأدمن الحالي
+     */
+    public function adminProfile(): JsonResponse
+    {
+        // تأكد أن Guard 'admin' معرف في config/auth.php
+        $admin = Auth::guard('admin')->user();
+        
+        if (!$admin) {
+             return $this->errorResponse("لم يتم العثور على بيانات المسؤول", "ADMIN_NOT_FOUND", 404);
+        }
+
+        return $this->successResponse($admin, "تم جلب بيانات المسؤول بنجاح");
+    }
+}
+</file>
+
+<file path="app/Http/Controllers/Api/AuthController.php">
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\AuthService;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class AuthController extends Controller
+{
+    use ApiResponse;
+
+    protected $authService;
+
+    public function __construct(AuthService $authService)
+    {
+        $this->authService = $authService;
+    }
+
+    /**
+     * تسجيل مستخدم جديد
+     */
+    public function register(Request $request): JsonResponse
+    {
+        // لاحظ أننا لم نعد بحاجة لـ Try-Catch لأن ValidationException 
+        // سيتم معالجته تلقائياً في bootstrap/app.php بالصيغة الموحدة.
+        $validatedData = $request->validate([
+            'username' => 'required|string|min:3|unique:users',
+            'email'    => 'required|email|unique:users',
+            'phone'    => 'required|string|unique:users',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user = $this->authService->register($validatedData);
+        
+        return $this->successResponse($user, "تم تسجيل الحساب بنجاح", 201);
+    }
+
+    /**
+     * تسجيل دخول المستخدم
+     */
+    public function login(Request $request): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'username' => 'required|string',
+            'password' => 'required|string',
+        ]);
+
+        // الأفضل أن يعيد الـ Service إما مصفوفة البيانات أو يرمي Exception
+        // لكن بما أن الـ Service قد يعيد null في حال فشل الدخول:
+        $result = $this->authService->login($validatedData);
+        
+        if (!$result) {
+            return $this->errorResponse("بيانات الدخول غير صحيحة", "UNAUTHORIZED_ACCESS", 401);
+        }
+        
+        return $this->successResponse($result, "تم تسجيل الدخول بنجاح");
+    }
+
+    /**
+     * تسجيل الخروج
+     */
+    public function logout(): JsonResponse
+    {
+        $this->authService->logout();
+        return $this->successResponse(null, "تم تسجيل الخروج بنجاح");
+    }
+
+    /**
+     * تجديد التوكن
+     */
+    public function refresh(): JsonResponse
+    {
+        $result = $this->authService->refresh();
+        
+        if (!$result) {
+            // كود الخطأ أصبح TOKEN_EXPIRED ليتوافق مع نظامنا الجديد
+            return $this->errorResponse("انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً", "SESSION_EXPIRED", 401);
+        }
+        
+        return $this->successResponse($result, "تم تجديد التوكن بنجاح");
+    }
+
+    /**
+     * الملف الشخصي
+     */
+    public function userProfile(): JsonResponse
+    {
+        // استخدمنا الـ Guard الموحد 'api'
+        $user = Auth::guard('api')->user();
+        return $this->successResponse($user, "تم جلب بيانات المستخدم");
+    }
+
+    /**
+     * نسيان كلمة المرور
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $request->validate(['email' => 'required|email']);
+        
+        $this->authService->forgotPassword($request->only('email'));
+        
+        return $this->successResponse(null, "إذا كان البريد مسجلاً لدينا، فستصلك رسالة قريباً");
+    }
+}
+</file>
+
+<file path="app/Http/Controllers/Api/DocumentController.php">
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\DocumentService;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class DocumentController extends Controller
+{
+    use ApiResponse;
+
+    protected $documentService;
+
+    public function __construct(DocumentService $documentService)
+    {
+        $this->documentService = $documentService;
+    }
+
+    /**
+     * جلب كافة القوالب
+     */
+    public function index(): JsonResponse
+    {
+        $documents = $this->documentService->getAllDocuments();
+        return $this->successResponse($documents, "تم جلب قائمة القوالب بنجاح");
+    }
+
+    /**
+     * جلب تفاصيل قالب محدد
+     */
+    public function show(int $id): JsonResponse
+    {
+        // الخدمة سترمي ModelNotFoundException تلقائياً إذا لم يتواجد المعرف
+        // ومعالج الأخطاء العالمي سيحوله لرد 404 موحد.
+        $document = $this->documentService->getDocumentById($id);
+        return $this->successResponse($document, "تم جلب تفاصيل القالب");
+    }
+
+    /**
+     * تخزين قالب جديد مع ملفاته
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'name'             => 'required|string|max:255',
+            'document_type_id' => 'required|exists:document_types,id',
+            'template_file'    => 'required|file|mimes:html,txt,blade.php',
+            'price'            => 'nullable|numeric|min:0',
+            'visibility'       => 'nullable|in:free,basic,pro,private',
+            'fields'           => 'nullable|array',
+            'fields.*.name'    => 'required|string',
+            'fields.*.type'    => 'required|string',
+            'fields.*.label'   => 'nullable|string',
+            'fields.*.required'=> 'boolean',
+        ]);
+
+        $document = $this->documentService->createDocument($validatedData);
+        return $this->successResponse($document, "تم إنشاء القالب وتخزين الملف بنجاح", 201);
+    }
+
+    /**
+     * تحديث بيانات قالب
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'name'             => 'sometimes|string|max:255',
+            'document_type_id' => 'sometimes|exists:document_types,id',
+            'template_file'    => 'sometimes|file|mimes:html,txt,blade.php',
+            'price'            => 'sometimes|numeric|min:0',
+            'visibility'       => 'sometimes|in:free,basic,pro,private',
+            'fields'           => 'nullable|array',
+        ]);
+
+        $document = $this->documentService->updateDocument($id, $validatedData);
+        return $this->successResponse($document, "تم تحديث بيانات القالب بنجاح");
+    }
+
+    /**
+     * حذف قالب والملفات المرتبطة
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $this->documentService->deleteDocument($id);
+        return $this->successResponse(null, "تم حذف القالب والملفات المرتبطة به بنجاح");
+    }
+
+    // --- إدارة حقول الوثيقة (Document Fields) ---
+
+    public function getFields(int $documentId): JsonResponse
+    {
+        $fields = $this->documentService->getDocumentFields($documentId);
+        return $this->successResponse($fields, "تم جلب حقول القالب");
+    }
+
+    public function storeField(Request $request, int $documentId): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'name'     => 'required|string',
+            'type'     => 'required|string',
+            'label'    => 'nullable|string',
+            'required' => 'boolean'
+        ]);
+
+        $field = $this->documentService->createDocumentField($documentId, $validatedData);
+        return $this->successResponse($field, "تم إضافة الحقل بنجاح", 201);
+    }
+
+    public function updateField(Request $request, int $documentId, int $fieldId): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'name' => 'sometimes|string',
+            'type' => 'sometimes|string',
+            'label' => 'sometimes|string',
+        ]);
+
+        $field = $this->documentService->updateDocumentField($fieldId, $validatedData);
+        return $this->successResponse($field, "تم تحديث بيانات الحقل");
+    }
+
+    public function destroyField(int $documentId, int $fieldId): JsonResponse
+    {
+        $this->documentService->deleteDocumentField($fieldId);
+        return $this->successResponse(null, "تم حذف الحقل بنجاح");
+    }
+}
+</file>
+
+<file path="app/Http/Controllers/Api/DocumentTypeController.php">
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\DocumentTypeService;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class DocumentTypeController extends Controller
+{
+    use ApiResponse;
+
+    protected $documentTypeService;
+
+    public function __construct(DocumentTypeService $documentTypeService)
+    {
+        $this->documentTypeService = $documentTypeService;
+    }
+
+    /**
+     * عرض كل التصنيفات
+     */
+    public function index(): JsonResponse
+    {
+        $documentTypes = $this->documentTypeService->getAllDocumentTypes();
+        return $this->successResponse($documentTypes, "تم جلب جميع التصنيفات بنجاح");
+    }
+
+    /**
+     * عرض تصنيف محدد
+     */
+    public function show(int $id): JsonResponse
+    {
+        // بفضل نظامنا، إذا لم يوجد الـ ID، سيرمي الـ Service خطأ ModelNotFoundException
+        // وسيتم تحويله تلقائياً لرد 404 موحد يحتوي على error_code: NOT_FOUND
+        $documentType = $this->documentTypeService->getDocumentTypeById($id);
+        return $this->successResponse($documentType, "تم جلب بيانات التصنيف");
+    }
+
+    /**
+     * إنشاء تصنيف جديد
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'name'        => 'required|string|max:255|unique:document_types,name',
+            'description' => 'nullable|string',
+        ]);
+
+        $documentType = $this->documentTypeService->createDocumentType($validatedData);
+        
+        return $this->successResponse($documentType, "تم إنشاء تصنيف الوثائق بنجاح", 201);
+    }
+
+    /**
+     * تحديث تصنيف
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validatedData = $request->validate([
+            'name'        => 'sometimes|string|max:255|unique:document_types,name,' . $id,
+            'description' => 'nullable|string',
+        ]);
+
+        $documentType = $this->documentTypeService->updateDocumentType($id, $validatedData);
+        
+        return $this->successResponse($documentType, "تم تحديث التصنيف بنجاح");
+    }
+
+    /**
+     * حذف تصنيف
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $this->documentTypeService->deleteDocumentType($id);
+        
+        // الرد الموحد يضمن بقاء الـ frontend مستقراً حتى عند الحذف
+        return $this->successResponse(null, "تم حذف تصنيف الوثائق بنجاح");
+    }
+}
+</file>
+
+<file path="app/Http/Controllers/Api/ProfileController.php">
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\ProfileService;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class ProfileController extends Controller
+{
+    use ApiResponse;
+
+    protected $profileService;
+
+    public function __construct(ProfileService $profileService)
+    {
+        $this->profileService = $profileService;
+    }
+
+    /**
+     * عرض الملف الشخصي للمستخدم الحالي
+     */
+    public function show(): JsonResponse
+    {
+        // نجلب المستخدم مباشرة من الـ Guard المعرف
+        $user = Auth::guard('api')->user();
+
+        // الـ Service يمكنها جلب علاقات إضافية إذا لزم الأمر (مثل الإحصائيات أو الوثائق الخاصة به)
+        $profile = $this->profileService->getUserProfile($user);
+
+        return $this->successResponse($profile, "تم جلب بيانات الملف الشخصي بنجاح");
+    }
+
+    /**
+     * تحديث بيانات الملف الشخصي
+     */
+    public function update(Request $request): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+
+        $validatedData = $request->validate([
+            'username' => 'sometimes|string|max:255|unique:users,username,' . $user->id,
+            'email'    => 'sometimes|email|max:255|unique:users,email,' . $user->id,
+            'phone'    => 'sometimes|string|max:20|unique:users,phone,' . $user->id,
+            'password' => 'sometimes|string|min:6|confirmed',
+        ]);
+
+        // نقوم بالتحديث عبر الـ Service لضمان تشفير كلمة المرور إذا وجدت
+        $updatedUser = $this->profileService->updateProfile($user, $validatedData);
+
+        return $this->successResponse($updatedUser, "تم تحديث الملف الشخصي بنجاح");
+    }
+}
+</file>
+
+<file path="app/Http/Controllers/Api/UserDocumentController.php">
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\UserDocumentService;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use App\Models\Document;
+
+class UserDocumentController extends Controller
+{
+    use ApiResponse;
+
+    protected $userDocumentService;
+
+    public function __construct(UserDocumentService $userDocumentService)
+    {
+        $this->userDocumentService = $userDocumentService;
+    }
+
+    /**
+     * جلب كافة وثائق المستخدم الحالي
+     */
+    public function index(): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+        $userDocuments = $this->userDocumentService->getUserDocuments($user);
+        
+        return $this->successResponse($userDocuments, "تم جلب قائمة وثائقك بنجاح");
+    }
+
+    /**
+     * عرض تفاصيل وثيقة معينة يملكها المستخدم
+     */
+    public function show(int $userDocumentId): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+        
+        // الخدمة يجب أن تتحقق من ملكية المستخدم للوثيقة
+        $userDocument = $this->userDocumentService->getUserDocumentById($user, $userDocumentId);
+        
+        return $this->successResponse($userDocument, "تم جلب تفاصيل الوثيقة");
+    }
+
+    /**
+     * جلب الحقول المطلوبة لتعبئة قالب معين
+     */
+    public function getFields(int $documentId): JsonResponse
+    {
+        // بفضل المعالج العالمي، findOrFail ستعيد 404 JSON تلقائياً إذا لم يتوفر القالب
+        $document = Document::with('documentFields')->findOrFail($documentId);
+
+        $data = [
+            'document_id'   => $document->id,
+            'document_name' => $document->name,
+            'fields'        => $document->documentFields->map(function ($field) {
+                return [
+                    'id'          => $field->id,
+                    'name'        => $field->name,
+                    'label'       => $field->label,
+                    'type'        => $field->type,
+                    'required'    => (bool) $field->required,
+                    'placeholder' => $field->placeholder,
+                ];
+            })
+        ];
+
+        return $this->successResponse($data, "تم جلب حقول القالب بنجاح");
+    }
+
+    /**
+     * توليد ملف PDF بناءً على البيانات المدخلة
+     */
+    public function generate(Request $request, int $documentId): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+
+        $request->validate([
+            'input_data' => 'required|array',
+        ]);
+
+        // أي خطأ منطقي (مثل نقص بيانات) سيتم رميه كـ Exception من الـ Service
+        // وسيعالجه النظام الموحد تلقائياً
+        $userDocument = $this->userDocumentService->generatePdf(
+            $user,
+            $documentId,
+            $request->input('input_data')
+        );
+
+        return $this->successResponse($userDocument, "تم توليد ملف PDF بنجاح", 201);
+    }
+
+    /**
+     * تحميل ملف الـ PDF
+     */
+    public function download(int $userDocumentId)
+    {
+        $user = Auth::guard('api')->user();
+        
+        // الحصول على المسار من الـ Service يضمن فحص الملكية (Ownership) أولاً
+        $filePath = $this->userDocumentService->getPdfPath($user, $userDocumentId);
+
+        // ملاحظة: إذا لم يجد الملف في القرص، Laravel سيرمي استثناءً سيعالجه نظامنا الموحد كـ 404 JSON
+        return response()->download($filePath);
+    }
+}
+</file>
+
+<file path="app/Http/Middleware/AdminMiddleware.php">
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\Auth;
+use Tymon\JWTAuth\Exceptions\TokenExpiredException;
+use Tymon\JWTAuth\Exceptions\TokenInvalidException;
+use Tymon\JWTAuth\Exceptions\JWTException;
+use App\Traits\ApiResponse;
+use Throwable;
+
+class AdminMiddleware
+{
+    use ApiResponse;
+
+    /**
+     * معالجة الطلب والتأكد من أن المستخدم "أدمن"
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        try {
+            // 1. محاولة جلب المستخدم المرتبط بالتوكن باستخدام Guard الأدمن
+            $admin = Auth::guard('admin')->user();
+
+            // 2. التحقق من وجود المستخدم وصلاحيته كأدمن
+            if (!$admin || !($admin instanceof \App\Models\Admin)) {
+                return $this->errorResponse(
+                    "غير مصرح لك بالوصول: هذا الحساب ليس مديراً نظام", 
+                    "FORBIDDEN_ACCESS", 
+                    403
+                );
+            }
+
+        } catch (TokenInvalidException $e) {
+            return $this->errorResponse("التوكن المرسل غير صالح", "INVALID_TOKEN", 401);
+            
+        } catch (TokenExpiredException $e) {
+            return $this->errorResponse("انتهت صلاحية التوكن، يرجى تجديد الدخول", "TOKEN_EXPIRED", 401);
+            
+        } catch (JWTException $e) {
+            return $this->errorResponse("مشكلة في توكن الصلاحية: غير موجود أو تالف", "JWT_ERROR", 401);
+            
+        } catch (Throwable $e) {
+            // معالجة أي خطأ برمي غير متوقع
+            return $this->errorResponse(
+                "حدث خطأ أثناء معالجة الصلاحيات", 
+                "AUTH_INTERNAL_ERROR", 
+                500,
+                config('app.debug') ? $e->getMessage() : null
+            );
+        }
+
+        return $next($request);
+    }
+}
+</file>
+
+<file path="app/Services/AdminAuthService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\Admin;
+use Illuminate\Support\Facades\Auth;
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Throwable;
+
+class AdminAuthService
+{
+    /**
+     * تسجيل دخول الأدمن وتوليد التوكن
+     */
+    public function login(array $credentials)
+    {
+        // استخدام guard المسؤولين حصراً لضمان البحث في جدول admins
+        if (!$token = Auth::guard('admin')->attempt($credentials)) {
+            return false;
+        }
+
+        return $this->respondWithToken($token);
+    }
+
+    /**
+     * تسجيل الخروج وإبطال التوكن آمن
+     */
+    public function logout(): void
+    {
+        try {
+            // التحقق من وجود توكن قبل محاولة إبطاله لتجنب الأخطاء
+            if (Auth::guard('admin')->check()) {
+                JWTAuth::parseToken()->invalidate();
+                Auth::guard('admin')->logout();
+            }
+        } catch (Throwable $e) {
+            // لا نرمي خطأ هنا لأن العميل يريد الخروج بأي حال
+        }
+    }
+
+    /**
+     * تجديد التوكن الخاص بالأدمن
+     */
+    public function refresh()
+    {
+        try {
+            // نستخدم parseToken لضمان جلب التوكن من الهيدر وتجديده
+            $newToken = JWTAuth::parseToken()->refresh();
+            return $this->respondWithToken($newToken);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * تنسيق الرد مع التوكن وبيانات الأدمن
+     */
+    protected function respondWithToken(string $token): array
+    {
+        return [
+            "access_token" => $token,
+            "token_type"   => "bearer",
+            // الحصول على الـ TTL من إعدادات JWT المخصصة
+            "expires_in"   => config('jwt.ttl') * 60,
+            "admin"        => Auth::guard('admin')->user()
+        ];
+    }
+}
+</file>
+
+<file path="app/Services/AuthService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Exception;
+use Throwable;
+
+class AuthService
+{
+    /**
+     * تسجيل مستخدم جديد
+     * ملاحظة: لا داعي لـ try-catch هنا لأن أي خطأ في قاعدة البيانات 
+     * سيعالجه الـ Global Exception Handler كـ SERVER_ERROR.
+     */
+    public function register(array $data): User
+    {
+        $data["password"] = Hash::make($data["password"]);
+        return User::create($data);
+    }
+
+    /**
+     * تسجيل الدخول وجلب التوكن
+     */
+    public function login(array $credentials)
+    {
+        // محاولة الحصول على التوكن
+        if (!$token = Auth::guard('api')->attempt($credentials)) {
+            return false; // الـ Controller سيحولها لـ UNAUTHORIZED_ACCESS
+        }
+        
+        return $this->respondWithToken($token);
+    }
+
+    /**
+     * تسجيل خروج آمن وإبطال التوكن
+     */
+    public function logout(): void
+    {
+        try {
+            // إبطال التوكن الحالي
+            if (Auth::guard('api')->check()) {
+                JWTAuth::parseToken()->invalidate();
+                Auth::guard('api')->logout();
+            }
+        } catch (Throwable $e) {
+            // نتركها فارغة أو نسجل الخطأ في Log، لأن تسجيل الخروج يجب ألا يعطل المستخدم
+        }
+    }
+
+    /**
+     * تجديد التوكن الحالي
+     */
+    public function refresh()
+    {
+        try {
+            $newToken = JWTAuth::parseToken()->refresh();
+            return $this->respondWithToken($newToken);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * بناء هيكل رد التوكن الموحد
+     * قمنا بتحسينه ليكون أكثر دقة واستقراراً
+     */
+    protected function respondWithToken(string $token): array
+    {
+        return [
+            "access_token" => $token,
+            "token_type"   => "bearer",
+            // الحصول على TTL من الـ config مباشرة كخيار أكثر أماناً
+            "expires_in"   => config('jwt.ttl') * 60,
+            "user"         => Auth::guard('api')->user()
+        ];
+    }
+
+    public function forgotPassword(array $data): bool
+    {
+        // هنا يمكنك لاحقاً إضافة منطق إرسال رابط إعادة التعيين
+        return true;
+    }
+}
+</file>
+
+<file path="app/Services/DocumentService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\Document;
+use App\Models\DocumentField;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Throwable;
+
+class DocumentService
+{
+    /**
+     * جلب كافة الوثائق مع علاقاتها.
+     */
+    public function getAllDocuments()
+    {
+        return Document::with(['documentType', 'documentFields'])->get();
+    }
+
+    /**
+     * جلب وثيقة محددة أو رمي خطأ 404 تلقائياً.
+     */
+    public function getDocumentById(int $id)
+    {
+        return Document::with(['documentType', 'documentFields'])->findOrFail($id);
+    }
+
+    /**
+     * إنشاء وثيقة جديدة مع الحقول والملف.
+     */
+    public function createDocument(array $data)
+    {
+        return DB::transaction(function () use ($data) {
+            $templateName = null;
+
+            if (isset($data['template_file'])) {
+                $templateFile = $data['template_file'];
+                $templateName = (string) Str::uuid() . '.html';
+                // تخزين الملف في القرص المحلي
+                Storage::disk('local')->put('templates/' . $templateName, file_get_contents($templateFile->getRealPath()));
+            }
+
+            $document = Document::create([
+                'name'             => $data['name'],
+                'document_type_id' => $data['document_type_id'],
+                'visibility'       => $data['visibility'] ?? 'private',
+                'price'            => $data['price'] ?? 0.00,
+                'template_name'    => $templateName,
+            ]);
+
+            if (!empty($data['fields'])) {
+                $document->documentFields()->createMany($data['fields']);
+            }
+
+            return $document->load(['documentType', 'documentFields']);
+        });
+    }
+
+    /**
+     * تحديث الوثيقة وإدارة الملفات القديمة.
+     */
+    public function updateDocument(int $id, array $data)
+    {
+        $document = Document::findOrFail($id);
+
+        return DB::transaction(function () use ($document, $data) {
+            if (isset($data['template_file'])) {
+                // حذف الملف القديم في حال وجوده لتوفير المساحة
+                if ($document->template_name) {
+                    Storage::disk('local')->delete('templates/' . $document->template_name);
+                }
+                
+                $templateFile = $data['template_file'];
+                $templateName = (string) Str::uuid() . '.html';
+                Storage::disk('local')->put('templates/' . $templateName, file_get_contents($templateFile->getRealPath()));
+                $data['template_name'] = $templateName;
+            }
+
+            $document->update($data);
+
+            if (isset($data['fields'])) {
+                // تحديث الحقول عبر الحذف والإعادة (أو يمكنك استخدام upsert لمستوى متقدم)
+                $document->documentFields()->delete();
+                $document->documentFields()->createMany($data['fields']);
+            }
+
+            return $document->load(['documentType', 'documentFields']);
+        });
+    }
+
+    /**
+     * حذف الوثيقة وتنظيف الملفات المرتبطة.
+     */
+    public function deleteDocument(int $id)
+    {
+        $document = Document::findOrFail($id);
+        
+        return DB::transaction(function () use ($document) {
+            if ($document->template_name) {
+                Storage::disk('local')->delete('templates/' . $document->template_name);
+            }
+            return $document->delete();
+        });
+    }
+
+    // --- إدارة حقول الوثيقة (Document Fields) ---
+
+    public function getDocumentFields(int $documentId)
+    {
+        $document = Document::findOrFail($documentId);
+        return $document->documentFields;
+    }
+
+    public function createDocumentField(int $documentId, array $data)
+    {
+        $document = Document::findOrFail($documentId);
+        return $document->documentFields()->create($data);
+    }
+
+    public function updateDocumentField(int $fieldId, array $data)
+    {
+        $field = DocumentField::findOrFail($fieldId);
+        $field->update($data);
+        return $field;
+    }
+
+    public function deleteDocumentField(int $fieldId)
+    {
+        $field = DocumentField::findOrFail($fieldId);
+        return $field->delete();
+    }
+}
+</file>
+
+<file path="app/Services/DocumentTypeService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\DocumentType;
+use Illuminate\Support\Str;
+use Throwable;
+
+class DocumentTypeService
+{
+    /**
+     * جلب كل التصنيفات
+     */
+    public function getAllDocumentTypes()
+    {
+        return DocumentType::all();
+    }
+
+    /**
+     * جلب تصنيف محدد أو رمي خطأ 404 موحد
+     */
+    public function getDocumentTypeById(int $id)
+    {
+        return DocumentType::findOrFail($id);
+    }
+
+    /**
+     * إنشاء تصنيف جديد مع توليد الـ Slug
+     */
+    public function createDocumentType(array $data)
+    {
+        // حذفنا try-catch لأن app.php سيمسك أي خطأ قاعدة بيانات ويرسل رد JSON منسق
+        $data["slug"] = Str::slug($data["name"]);
+        
+        return DocumentType::create($data);
+    }
+
+    /**
+     * تحديث التصنيف وتحديث الـ Slug إذا تغير الاسم
+     */
+    public function updateDocumentType(int $id, array $data)
+    {
+        $documentType = DocumentType::findOrFail($id);
+
+        if (isset($data["name"])) {
+            $data["slug"] = Str::slug($data["name"]);
+        }
+        
+        $documentType->update($data);
+        return $documentType;
+    }
+
+    /**
+     * حذف تصنيف مع حماية البيانات المرتبطة
+     */
+    public function deleteDocumentType(int $id)
+    {
+        $documentType = DocumentType::findOrFail($id);
+
+        // إضافة منطق حماية: لا تحذف التصنيف إذا كان يحتوي على وثائق
+        if ($documentType->documents()->count() > 0) {
+            // سنرمي Exception عادي، والمعالج العالمي سيحوله لرد 500 أو يمكنك تخصيصه
+            throw new \Exception("لا يمكن حذف التصنيف لأنه مرتبط بوثائق فعلية. قم بنقل الوثائق أولاً.");
+        }
+
+        return $documentType->delete();
+    }
+}
+</file>
+
+<file path="app/Services/ProfileService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Throwable;
+
+class ProfileService
+{
+    /**
+     * جلب بيانات الملف الشخصي
+     * يمكننا هنا تحميل العلاقات التي يحتاجها المستخدم في لوحة تحكمه
+     */
+    public function getUserProfile(User $user)
+    {
+        // مستقبلاً في Hokoki، قد ترغب في تحميل عدد الوثائق التي أنشأها المستخدم
+        // $user->loadCount('documents'); 
+        return $user;
+    }
+
+    /**
+     * تحديث بيانات الملف الشخصي
+     */
+    public function updateProfile(User $user, array $data): User
+    {
+        // حذفنا try-catch لأن أي خطأ (مثل توقف قاعدة البيانات) 
+        // سيمسكه bootstrap/app.php ويعيده كـ SERVER_ERROR موحد.
+
+        // 1. تشفير كلمة المرور فقط إذا تم إرسالها
+        if (!empty($data["password"])) {
+            $data["password"] = Hash::make($data["password"]);
+        } else {
+            // نضمن عدم إرسال حقل الباسورد فارغاً حتى لا يمسح القيمة القديمة
+            unset($data["password"]);
+        }
+
+        // 2. تحديث بيانات المستخدم
+        $user->update($data);
+
+        // 3. استخدام fresh() لضمان الحصول على أحدث البيانات من الجدول
+        return $user->fresh();
+    }
+}
+</file>
+
+<file path="app/Services/UserDocumentService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\Document;
+use App\Models\User;
+use App\Models\UserDocument;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Throwable;
+
+class UserDocumentService
+{
+    protected string $pythonMicroserviceUrl;
+
+    public function __construct()
+    {
+        $this->pythonMicroserviceUrl = config("services.python_pdf_generator.url", 'http://localhost:8000');
+    }
+
+    /**
+     * جلب جميع وثائق المستخدم مع بيانات القالب الأصلي
+     */
+    public function getUserDocuments(User $user)
+    {
+        return $user->userDocuments()->with("document")->latest()->get();
+    }
+
+    /**
+     * جلب وثيقة محددة للمستخدم أو رمي خطأ 404
+     */
+    public function getUserDocumentById(User $user, int $userDocumentId)
+    {
+        return $user->userDocuments()->with("document")->findOrFail($userDocumentId);
+    }
+
+    /**
+     * توليد ملف PDF عبر التواصل مع خدمة Python (WeasyPrint)
+     */
+    public function generatePdf(User $user, int $documentId, array $inputData)
+    {
+        // 1. جلب بيانات القالب
+        $document = Document::findOrFail($documentId);
+
+        // 2. التحقق من وجود ملف القالب
+        $templatePath = "templates/" . $document->template_name;
+        if (!Storage::disk("local")->exists($templatePath)) {
+            throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
+        }
+
+        $templateContent = Storage::disk("local")->get($templatePath);
+
+        // 3. إرسال البيانات إلى Microservice (Python)
+        // أضفنا timeout لضمان عدم تعليق السيرفر في حال تأخر رد بايثون
+        $response = Http::timeout(60)->post($this->pythonMicroserviceUrl . "/generate-pdf", [
+            "template_name"    => $document->template_name,
+            "data"             => $inputData,
+            "template_content" => $templateContent,
+        ]);
+
+        // 4. معالجة فشل الاستجابة من سيرفر Python
+        if ($response->failed()) {
+            $errorDetail = $response->json()['detail'] ?? "خطأ داخلي في خدمة توليد الملفات.";
+            throw new \Exception("فشل توليد الملف: " . $errorDetail);
+        }
+
+        // 5. حفظ ملف PDF المولد في التخزين العام
+        $pdfFileName = (string) Str::uuid() . ".pdf";
+        $pdfPath = "pdfs/" . $pdfFileName;
+        
+        Storage::disk("public")->put($pdfPath, $response->body());
+
+        // 6. تسجيل العملية في قاعدة البيانات
+        return UserDocument::create([
+            "user_id"            => $user->id,
+            "document_id"        => $document->id,
+            "generated_pdf_path" => $pdfPath,
+            "input_data"         => $inputData,
+        ])->load("document");
+    }
+
+    /**
+     * الحصول على المسار الفيزيائي للملف مع فحص الملكية
+     */
+    public function getPdfPath(User $user, int $userDocumentId): string
+    {
+        // فحص الملكية (Ownership Check) لضمان عدم وصول مستخدم لملفات غيره
+        $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
+
+        $fullPath = storage_path('app/public/' . $userDocument->generated_pdf_path);
+
+        if (!file_exists($fullPath)) {
+            throw new \Exception("عذراً، ملف الـ PDF غير موجود فعلياً على الخادم.");
+        }
+
+        return $fullPath;
+    }
+}
+</file>
+
+<file path="app/Traits/ApiResponse.php">
+<?php
+
+namespace App\Traits;
+
+use Illuminate\Http\JsonResponse;
+
+trait ApiResponse
+{
+    /**
+     * إرسال استجابة نجاح موحدة.
+     */
+    protected function successResponse($data = null, string $message = "تمت العملية بنجاح", int $statusCode = 200): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data'    => $data,
+        ], $statusCode);
+    }
+
+    /**
+     * إرسال استجابة خطأ موحدة.
+     */
+    protected function errorResponse(string $message, string $errorCode, int $statusCode = 400, $data = null): JsonResponse
+    {
+        return response()->json([
+            'success'    => false,
+            'message'    => $message,
+            'error_code' => $errorCode,
+            'data'       => $data,
+        ], $statusCode);
+    }
+}
+</file>
+
+<file path="database/migrations/0001_01_01_000000_create_users_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        // تم تعديل جدول المستخدمين ليشمل الحقول المطلوبة في مشروعك
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('username')->unique(); // أضفنا الـ username بدلاً من name
+            $table->string('email')->unique();
+            $table->string('phone')->nullable();   // أضفنا رقم الهاتف
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
+
+        // جداول النظام الضرورية (Password Resets & Sessions)
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('sessions');
+    }
+};
+</file>
+
+<file path="database/migrations/0001_01_01_000001_create_cache_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('cache', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->mediumText('value');
+            $table->integer('expiration')->index();
+        });
+
+        Schema::create('cache_locks', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->integer('expiration')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('cache');
+        Schema::dropIfExists('cache_locks');
+    }
+};
+</file>
+
+<file path="database/migrations/0001_01_01_000002_create_jobs_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+
+        Schema::create('job_batches', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('name');
+            $table->integer('total_jobs');
+            $table->integer('pending_jobs');
+            $table->integer('failed_jobs');
+            $table->longText('failed_job_ids');
+            $table->mediumText('options')->nullable();
+            $table->integer('cancelled_at')->nullable();
+            $table->integer('created_at');
+            $table->integer('finished_at')->nullable();
+        });
+
+        Schema::create('failed_jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('uuid')->unique();
+            $table->text('connection');
+            $table->text('queue');
+            $table->longText('payload');
+            $table->longText('exception');
+            $table->timestamp('failed_at')->useCurrent();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
+    }
+};
+</file>
+
+<file path="database/migrations/2026_04_07_123410_create_document_types_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create("document_types", function (Blueprint $table) {
+            $table->id();
+            $table->string("name")->unique();
+            $table->string("slug")->unique();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists("document_types");
+    }
+};
+</file>
+
+<file path="database/migrations/2026_04_07_123410_create_documents_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create("documents", function (Blueprint $table) {
+            $table->id();
+            $table->string("name");
+            $table->foreignId("document_type_id")->constrained("document_types")->onDelete("cascade");
+            $table->enum("visibility", ["public", "private"])->default("private");
+            $table->decimal("price", 8, 2)->default(0.00);
+            $table->string("template_name");
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists("documents");
+    }
+};
+</file>
+
+<file path="database/migrations/2026_04_07_123411_create_document_fields_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create("document_fields", function (Blueprint $table) {
+            $table->id();
+            $table->foreignId("document_id")->constrained("documents")->onDelete("cascade");
+            $table->string("name");
+            $table->string("label");
+            $table->enum("type", ["text", "number", "date", "textarea"])->default("text");
+            $table->boolean("required")->default(false);
+            $table->string("placeholder")->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists("document_fields");
+    }
+};
+</file>
+
+<file path="database/migrations/2026_04_07_123411_create_user_documents_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create("user_documents", function (Blueprint $table) {
+            $table->id();
+            $table->foreignId("user_id")->constrained("users")->onDelete("cascade");
+            $table->foreignId("document_id")->constrained("documents")->onDelete("cascade");
+            $table->string("generated_pdf_path")->nullable();
+            $table->json("input_data")->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists("user_documents");
+    }
+};
+</file>
+
+<file path="database/migrations/2026_04_07_123412_create_admins_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('admins', function (Blueprint $table) {
+            $table->id();
+            $table->string('username')->unique(); // تم التغيير لـ username
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('admins');
+    }
+};
+</file>
+
+<file path="database/migrations/2026_04_07_200254_create_personal_access_tokens_table.php">
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('tokenable');
+            $table->text('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable()->index();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('personal_access_tokens');
+    }
+};
+</file>
+
+<file path="routes/api.php">
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AdminAuthController;
+use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\DocumentTypeController;
+use App\Http\Controllers\Api\UserDocumentController;
+use App\Http\Controllers\Api\ProfileController;
+
+/*
+|--------------------------------------------------------------------------
+| 1. المسارات العامة (Public Routes)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('auth')->group(function () {
+    Route::post('register', [AuthController::class, 'register']);
+    Route::post('login', [AuthController::class, 'login']);
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('reset-password', [AuthController::class, 'resetPassword']);
+});
+
+// دخول الأدمن
+Route::post('admin/auth/login', [AdminAuthController::class, 'login']);
+
+// تصنيفات الوثائق (مشاهدة فقط للجميع)
+Route::get('document-types', [DocumentTypeController::class, 'index']);
+Route::get('document-types/{documentType}', [DocumentTypeController::class, 'show']);
+
+/*
+|--------------------------------------------------------------------------
+| 2. مسارات المستخدمين (User Guard: api)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:api')->group(function () {
+
+    // إدارة الجلسة
+    Route::prefix('auth')->group(function () {
+        Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('refresh', [AuthController::class, 'refresh']);
+    });
+
+    // الملف الشخصي
+    Route::prefix('profile')->group(function () {
+        Route::get('/', [ProfileController::class, 'show']);
+        Route::put('/', [ProfileController::class, 'update']);
+    });
+
+    // تصفح القوالب المتاحة
+    Route::get('documents', [DocumentController::class, 'index']);
+    Route::get('documents/{document}', [DocumentController::class, 'show']);
+    Route::get('documents/{document}/fields', [DocumentController::class, 'getFields']);
+
+    // وثائق المستخدم (المولدة)
+    Route::prefix('user-documents')->group(function () {
+        Route::get('/', [UserDocumentController::class, 'index']);
+        Route::post('generate/{document}', [UserDocumentController::class, 'generate']); 
+        Route::get('{userDocument}', [UserDocumentController::class, 'show']);
+        Route::get('{userDocument}/download', [UserDocumentController::class, 'download']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| 3. مسارات الإدارة (Admin Guard: admin)
+|--------------------------------------------------------------------------
+*/
+Route::group(['middleware' => ['auth:admin'], 'prefix' => 'admin'], function () {
+
+    // إدارة جلسة الأدمن
+    Route::prefix('auth')->group(function () {
+        Route::post('logout', [AdminAuthController::class, 'logout']);
+        Route::post('refresh', [AdminAuthController::class, 'refresh']);
+        Route::get('profile', [AdminAuthController::class, 'adminProfile']);
+    });
+
+    // إدارة الأنواع والقوالب
+    // ملاحظة: جعلنا الـ document-types تستثني الـ index و show لأنها موجودة في المسارات العامة
+    Route::apiResource('document-types', DocumentTypeController::class)->except(['index', 'show']);
+    Route::apiResource('documents', DocumentController::class);
+
+    // إدارة الحقول (Nested Resources)
+    Route::prefix('documents/{document}/fields')->group(function () {
+        Route::get('/', [DocumentController::class, 'getFields']);
+        Route::post('/', [DocumentController::class, 'storeField']);
+        Route::put('{field}', [DocumentController::class, 'updateField']);
+        Route::delete('{field}', [DocumentController::class, 'destroyField']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| 4. معالجة الروابط غير الموجودة (Fallback)
+|--------------------------------------------------------------------------
+*/
+Route::fallback(function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'الرابط المطلوب غير موجود.',
+        'error_code' => 'ROUTE_NOT_FOUND'
+    ], 404);
+});
+</file>
+
+<file path="routes/console.php">
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+</file>
+
+<file path="routes/web.php">
+<?php
+
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', function () {
+    return view('welcome');
+});
+</file>
+
+</files>

@@ -4,112 +4,107 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\UserDocumentService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Document;
 
 class UserDocumentController extends Controller
 {
+    use ApiResponse;
+
     protected $userDocumentService;
 
     public function __construct(UserDocumentService $userDocumentService)
     {
         $this->userDocumentService = $userDocumentService;
-        // الحماية تتم في ملف api.php
     }
 
     /**
-     * جلب قائمة وثائق المستخدم الحالي
+     * جلب كافة وثائق المستخدم الحالي
      */
     public function index(): JsonResponse
     {
         $user = Auth::guard('api')->user();
         $userDocuments = $this->userDocumentService->getUserDocuments($user);
-        return response()->json($userDocuments);
+        
+        return $this->successResponse($userDocuments, "تم جلب قائمة وثائقك بنجاح");
     }
 
     /**
-     * جلب تفاصيل وثيقة محددة للمستخدم
+     * عرض تفاصيل وثيقة معينة يملكها المستخدم
      */
     public function show(int $userDocumentId): JsonResponse
     {
         $user = Auth::guard('api')->user();
+        
+        // الخدمة يجب أن تتحقق من ملكية المستخدم للوثيقة
         $userDocument = $this->userDocumentService->getUserDocumentById($user, $userDocumentId);
-        return response()->json($userDocument);
+        
+        return $this->successResponse($userDocument, "تم جلب تفاصيل الوثيقة");
     }
 
     /**
-     * جلب الحقول المطلوبة لملء وثيقة معينة
+     * جلب الحقول المطلوبة لتعبئة قالب معين
      */
     public function getFields(int $documentId): JsonResponse
     {
-        // جلب الوثيقة مع الحقول الخاصة بها
-        $document = \App\Models\Document::with('documentFields')->findOrFail($documentId);
+        // بفضل المعالج العالمي، findOrFail ستعيد 404 JSON تلقائياً إذا لم يتوفر القالب
+        $document = Document::with('documentFields')->findOrFail($documentId);
 
-        return response()->json([
-            'document_id' => $document->id,
+        $data = [
+            'document_id'   => $document->id,
             'document_name' => $document->name,
-            'fields' => $document->documentFields->map(function ($field) {
+            'fields'        => $document->documentFields->map(function ($field) {
                 return [
-                    'id' => $field->id,
-                    'name' => $field->name,
-                    'label' => $field->label,
-                    'type' => $field->type,
-                    'required' => $field->required,
+                    'id'          => $field->id,
+                    'name'        => $field->name,
+                    'label'       => $field->label,
+                    'type'        => $field->type,
+                    'required'    => (bool) $field->required,
                     'placeholder' => $field->placeholder,
                 ];
             })
-        ]);
+        ];
+
+        return $this->successResponse($data, "تم جلب حقول القالب بنجاح");
     }
+
     /**
-     * توليد ملف PDF جديد (ارسال البيانات لخدمة بايثون)
+     * توليد ملف PDF بناءً على البيانات المدخلة
      */
     public function generate(Request $request, int $documentId): JsonResponse
     {
         $user = Auth::guard('api')->user();
 
-        // التحقق من البيانات المرسلة (التي سيتم تعبئتها في القالب)
-        $validator = Validator::make($request->all(), [
-            'input_data' => 'required|array', // البيانات التي طلبها الأدمن في DocumentField
+        $request->validate([
+            'input_data' => 'required|array',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // أي خطأ منطقي (مثل نقص بيانات) سيتم رميه كـ Exception من الـ Service
+        // وسيعالجه النظام الموحد تلقائياً
+        $userDocument = $this->userDocumentService->generatePdf(
+            $user,
+            $documentId,
+            $request->input('input_data')
+        );
 
-        try {
-            $userDocument = $this->userDocumentService->generatePdf(
-                $user,
-                $documentId,
-                $request->input('input_data')
-            );
-
-            return response()->json([
-                "message" => "تم توليد ملف PDF بنجاح",
-                "user_document" => $userDocument
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json(["error" => "فشل في توليد الملف: " . $e->getMessage()], 500);
-        }
+        return $this->successResponse($userDocument, "تم توليد ملف PDF بنجاح", 201);
     }
 
     /**
-     * تحميل ملف PDF
-     * لاحظ الإصلاح الجذري هنا باستقبال المسار من الـ Service
+     * الحصول على رابط تحميل ملف الـ PDF
      */
-    public function download(int $userDocumentId)
+    public function download(int $userDocumentId): JsonResponse
     {
         $user = Auth::guard('api')->user();
+        
+        // جلب الرابط المباشر للملف مع فحص الملكية
+        $fileUrl = $this->userDocumentService->getPdfUrl($user, $userDocumentId);
 
-        try {
-            // نأخذ المسار الفيزيائي للملف من الـ Service
-            $filePath = $this->userDocumentService->getPdfPath($user, $userDocumentId);
-
-            // الـ Controller هو من ينفذ أمر التحميل الفعلي
-            return response()->download($filePath);
-        } catch (\Exception $e) {
-            return response()->json(["error" => "الملف غير موجود أو لا تملك صلاحية الوصول"], 404);
-        }
+        return $this->successResponse([
+            'download_url' => $fileUrl
+        ], "تم استخراج رابط التحميل بنجاح");
     }
 }

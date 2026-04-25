@@ -4,43 +4,42 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\AdminAuthService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
 
 class AdminAuthController extends Controller
 {
+    use ApiResponse;
+
     protected $adminAuthService;
 
     public function __construct(AdminAuthService $adminAuthService)
     {
         $this->adminAuthService = $adminAuthService;
-        // ملاحظة: يفضل نقل الـ Middleware إلى ملف api.php
     }
 
     /**
-     * تسجيل دخول الأدمن باستخدام username
+     * تسجيل دخول الأدمن
      */
     public function login(Request $request): JsonResponse
     {
-        // التحقق من البيانات (استخدمنا username بدلاً من name)
-        $validator = Validator::make($request->all(), [
+        // التعديل: الـ ValidationException سيُعالج تلقائياً في app.php 
+        // وسيعيد كود VALIDATION_ERROR كما حددنا سابقاً.
+        $validatedData = $request->validate([
             'username' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $credentials = $request->only('username', 'password');
-        $result = $this->adminAuthService->login($credentials);
+        $result = $this->adminAuthService->login($validatedData);
 
         if (!$result) {
-            return response()->json(["error" => "بيانات الدخول غير صحيحة"], 401);
+            // التعديل: توحيد كود الخطأ ليكون أكثر دقة
+            return $this->errorResponse("بيانات دخول المسؤول غير صحيحة", "ADMIN_UNAUTHORIZED", 401);
         }
 
-        return response()->json($result);
+        return $this->successResponse($result, "تم تسجيل دخول المسؤول بنجاح");
     }
 
     /**
@@ -48,32 +47,37 @@ class AdminAuthController extends Controller
      */
     public function logout(): JsonResponse
     {
-        // استدعينا وظيفة الـ logout من الـ service لأنها تحتوي على منطق إبطال التوكن
         $this->adminAuthService->logout();
-        
-        return response()->json(["message" => "تم تسجيل الخروج بنجاح"]);
+        return $this->successResponse(null, "تم تسجيل الخروج بنجاح");
     }
 
     /**
-     * تجديد التوكن
+     * تجديد التوكن الخاص بالأدمن
      */
     public function refresh(): JsonResponse
     {
         $result = $this->adminAuthService->refresh();
         
         if (!$result) {
-            return response()->json(["error" => "فشل تجديد التوكن"], 401);
+            // التعديل: استخدام SESSION_EXPIRED لتوحيد المنطق مع الـ User Auth
+            return $this->errorResponse("فشل تجديد جلسة المسؤول، يرجى الدخول مجدداً", "SESSION_EXPIRED", 401);
         }
 
-        return response()->json($result);
+        return $this->successResponse($result, "تم تجديد توكن المسؤول بنجاح");
     }
 
     /**
-     * عرض الملف الشخصي للأدمن
+     * عرض الملف الشخصي للأدمن الحالي
      */
     public function adminProfile(): JsonResponse
     {
-        // نستخدم guard('admin') الذي قمنا بضبطه
-        return response()->json(auth("admin")->user());
+        // تأكد أن Guard 'admin' معرف في config/auth.php
+        $admin = Auth::guard('admin')->user();
+        
+        if (!$admin) {
+             return $this->errorResponse("لم يتم العثور على بيانات المسؤول", "ADMIN_NOT_FOUND", 404);
+        }
+
+        return $this->successResponse($admin, "تم جلب بيانات المسؤول بنجاح");
     }
 }

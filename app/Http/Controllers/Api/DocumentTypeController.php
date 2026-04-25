@@ -4,27 +4,29 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\DocumentTypeService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class DocumentTypeController extends Controller
 {
+    use ApiResponse;
+
     protected $documentTypeService;
 
     public function __construct(DocumentTypeService $documentTypeService)
     {
+        // التحقق من الصلاحيات يتم عبر الـ Middleware في ملف الروابط
         $this->documentTypeService = $documentTypeService;
-        // تم نقل الميدل وير إلى ملف api.php لضمان استقرار لارفيل 11
     }
 
     /**
-     * عرض كل التصنيفات (متاح للجميع)
+     * عرض كل التصنيفات
      */
     public function index(): JsonResponse
     {
         $documentTypes = $this->documentTypeService->getAllDocumentTypes();
-        return response()->json($documentTypes);
+        return $this->successResponse($documentTypes, "تم جلب جميع التصنيفات بنجاح");
     }
 
     /**
@@ -33,51 +35,46 @@ class DocumentTypeController extends Controller
     public function show(int $id): JsonResponse
     {
         $documentType = $this->documentTypeService->getDocumentTypeById($id);
-        return response()->json($documentType);
+        return $this->successResponse($documentType, "تم جلب بيانات التصنيف");
     }
 
     /**
-     * إنشاء تصنيف جديد (للأدمن فقط)
+     * إنشاء تصنيف جديد
+     * تم تحديثها لإزالة الـ description ومطابقة قاعدة البيانات
      */
     public function store(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'name'        => 'required|string|max:255|unique:document_types',
-            'description' => 'nullable|string',
+        $validatedData = $request->validate([
+            'name' => 'required|string|max:255|unique:document_types,name',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $documentType = $this->documentTypeService->createDocumentType($request->all());
-        return response()->json($documentType, 201);
+        $documentType = $this->documentTypeService->createDocumentType($validatedData);
+        
+        return $this->successResponse($documentType, "تم إنشاء تصنيف الوثائق بنجاح", 201);
     }
 
     /**
-     * تحديث تصنيف (للأدمن فقط)
+     * تحديث تصنيف
+     * تم تحديثها لإزالة الـ description وضمان التحقق من الحقول المطلوبة فقط
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'name'        => 'sometimes|string|max:255|unique:document_types,name,' . $id,
-            'description' => 'nullable|string',
+        $validatedData = $request->validate([
+            'name' => 'sometimes|string|max:255|unique:document_types,name,' . $id,
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $documentType = $this->documentTypeService->updateDocumentType($id, $request->all());
-        return response()->json($documentType);
+        $documentType = $this->documentTypeService->updateDocumentType($id, $validatedData);
+        
+        return $this->successResponse($documentType, "تم تحديث التصنيف بنجاح");
     }
 
     /**
-     * حذف تصنيف (للأدمن فقط)
+     * حذف تصنيف
      */
     public function destroy(int $id): JsonResponse
     {
         $this->documentTypeService->deleteDocumentType($id);
-        return response()->json(['message' => 'تم حذف تصنيف الوثائق بنجاح'], 200);
+        
+        return $this->successResponse(null, "تم حذف تصنيف الوثائق بنجاح");
     }
 }

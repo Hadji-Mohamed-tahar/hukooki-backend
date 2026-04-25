@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Admin;
 use Illuminate\Support\Facades\Auth;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Throwable;
 
 class AdminAuthService
 {
@@ -13,7 +14,7 @@ class AdminAuthService
      */
     public function login(array $credentials)
     {
-        // لاحظ هنا استخدمنا 'admin' وهو الاسم الذي وضعناه في config/auth.php
+        // استخدام guard المسؤولين حصراً لضمان البحث في جدول admins
         if (!$token = Auth::guard('admin')->attempt($credentials)) {
             return false;
         }
@@ -22,29 +23,31 @@ class AdminAuthService
     }
 
     /**
-     * تسجيل الخروج وإبطال التوكن (Blacklist)
+     * تسجيل الخروج وإبطال التوكن آمن
      */
-    public function logout()
+    public function logout(): void
     {
         try {
-            // الطريقة الأكثر أماناً لإبطال التوكن الحالي
-            JWTAuth::parseToken()->invalidate();
-            return true;
-        } catch (\Exception $e) {
-            // في حال كان التوكن ملغى أصلاً أو غير موجود
-            return false;
+            // التحقق من وجود توكن قبل محاولة إبطاله لتجنب الأخطاء
+            if (Auth::guard('admin')->check()) {
+                JWTAuth::parseToken()->invalidate();
+                Auth::guard('admin')->logout();
+            }
+        } catch (Throwable $e) {
+            // لا نرمي خطأ هنا لأن العميل يريد الخروج بأي حال
         }
     }
 
     /**
-     * تجديد التوكن (Refresh)
+     * تجديد التوكن الخاص بالأدمن
      */
     public function refresh()
     {
         try {
+            // نستخدم parseToken لضمان جلب التوكن من الهيدر وتجديده
             $newToken = JWTAuth::parseToken()->refresh();
             return $this->respondWithToken($newToken);
-        } catch (\Exception $e) {
+        } catch (Throwable $e) {
             return false;
         }
     }
@@ -52,14 +55,14 @@ class AdminAuthService
     /**
      * تنسيق الرد مع التوكن وبيانات الأدمن
      */
-    protected function respondWithToken($token)
+    protected function respondWithToken(string $token): array
     {
         return [
             "access_token" => $token,
-            "token_type" => "bearer",
-            // جلب مدة الصلاحية من الإعدادات وتحويلها لثواني
-            "expires_in" => JWTAuth::factory()->getTTL() * 60,
-            "admin" => Auth::guard('admin')->user()
+            "token_type"   => "bearer",
+            // الحصول على الـ TTL من إعدادات JWT المخصصة
+            "expires_in"   => config('jwt.ttl') * 60,
+            "admin"        => Auth::guard('admin')->user()
         ];
     }
 }

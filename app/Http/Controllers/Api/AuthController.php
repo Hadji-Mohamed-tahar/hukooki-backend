@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\AuthService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 
 class AuthController extends Controller
 {
+    use ApiResponse;
+
     protected $authService;
 
     public function __construct(AuthService $authService)
@@ -23,19 +25,18 @@ class AuthController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'username' => 'required|string|unique:users',
+        // لاحظ أننا لم نعد بحاجة لـ Try-Catch لأن ValidationException 
+        // سيتم معالجته تلقائياً في bootstrap/app.php بالصيغة الموحدة.
+        $validatedData = $request->validate([
+            'username' => 'required|string|min:3|unique:users',
             'email'    => 'required|email|unique:users',
             'phone'    => 'required|string|unique:users',
             'password' => 'required|string|min:6|confirmed',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $user = $this->authService->register($request->all());
-        return response()->json(["message" => "تم تسجيل المستخدم بنجاح", "user" => $user], 201);
+        $user = $this->authService->register($validatedData);
+        
+        return $this->successResponse($user, "تم تسجيل الحساب بنجاح", 201);
     }
 
     /**
@@ -43,58 +44,89 @@ class AuthController extends Controller
      */
     public function login(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $validatedData = $request->validate([
             'username' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $token = $this->authService->login($request->only('username', 'password'));
+        // الأفضل أن يعيد الـ Service إما مصفوفة البيانات أو يرمي Exception
+        // لكن بما أن الـ Service قد يعيد null في حال فشل الدخول:
+        $result = $this->authService->login($validatedData);
         
-        if (!$token) {
-            return response()->json(["error" => "بيانات الدخول غير صحيحة"], 401);
+        if (!$result) {
+            return $this->errorResponse("بيانات الدخول غير صحيحة", "UNAUTHORIZED_ACCESS", 401);
         }
         
-        return response()->json($token);
+        return $this->successResponse($result, "تم تسجيل الدخول بنجاح");
     }
 
+    /**
+     * تسجيل الخروج
+     */
     public function logout(): JsonResponse
     {
         $this->authService->logout();
-        return response()->json(["message" => "تم تسجيل الخروج بنجاح"]);
+        return $this->successResponse(null, "تم تسجيل الخروج بنجاح");
     }
 
+    /**
+     * تجديد التوكن
+     */
     public function refresh(): JsonResponse
     {
         $result = $this->authService->refresh();
+        
         if (!$result) {
-            return response()->json(["error" => "فشل تجديد التوكن"], 401);
+            // كود الخطأ أصبح TOKEN_EXPIRED ليتوافق مع نظامنا الجديد
+            return $this->errorResponse("انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً", "SESSION_EXPIRED", 401);
         }
-        return response()->json($result);
+        
+        return $this->successResponse($result, "تم تجديد التوكن بنجاح");
     }
 
+    /**
+     * الملف الشخصي
+     */
     public function userProfile(): JsonResponse
     {
-        // استخدام guard 'api' صراحة لضمان جلب بيانات المستخدم
-        return response()->json(Auth::guard('api')->user());
+        // استخدمنا الـ Guard الموحد 'api'
+        $user = Auth::guard('api')->user();
+        return $this->successResponse($user, "تم جلب بيانات المستخدم");
     }
 
+   /**
+     * نسيان كلمة المرور (إرسال الرابط/الكود)
+     */
     public function forgotPassword(Request $request): JsonResponse
     {
-        // التحقق من الإيميل أولاً
-        $validator = Validator::make($request->all(), ['email' => 'required|email']);
-        if ($validator->fails()) return response()->json($validator->errors(), 422);
-
-        $this->authService->forgotPassword($request->all());
-        return response()->json(["message" => "تم إرسال رابط استعادة كلمة المرور (تجريبي)"]);
+        $request->validate(['email' => 'required|email']);
+        
+        $this->authService->forgotPassword($request->only('email'));
+        
+        return $this->successResponse(null, "إذا كان البريد مسجلاً لدينا، فستصلك رسالة قريباً");
     }
 
+    /**
+     * تعيين كلمة مرور جديدة (resetPassword)
+     */
     public function resetPassword(Request $request): JsonResponse
     {
-        $this->authService->resetPassword($request->all());
-        return response()->json(["message" => "تم تغيير كلمة المرور بنجاح (تجريبي)"]);
+        $validatedData = $request->validate([
+            'token'    => 'required|string', // الكود المستلم في البريد
+            'email'    => 'required|email',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $result = $this->authService->resetPassword($validatedData);
+
+        if (!$result) {
+            return $this->errorResponse(
+                "الكود المستخدم غير صحيح أو منتهي الصلاحية", 
+                "INVALID_RESET_TOKEN", 
+                400
+            );
+        }
+
+        return $this->successResponse(null, "تم تغيير كلمة المرور بنجاح، يمكنك الآن تسجيل الدخول");
     }
 }

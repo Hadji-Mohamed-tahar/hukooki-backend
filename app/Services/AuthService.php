@@ -5,30 +5,27 @@ namespace App\Services;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Password;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Throwable;
 
 class AuthService
 {
     /**
      * تسجيل مستخدم جديد
      */
-    public function register(array $data)
+    public function register(array $data): User
     {
-        // تشفير كلمة المرور قبل الحفظ
         $data["password"] = Hash::make($data["password"]);
-        
-        // سيقوم لارفيل بحفظ username, email, phone, password بناءً على الـ fillable
-        $user = User::create($data);
-        
-        return $user;
+        return User::create($data);
     }
 
     /**
-     * تسجيل الدخول (يدعم الـ username والـ password)
+     * تسجيل الدخول وجلب التوكن
      */
     public function login(array $credentials)
     {
-        // نستخدم guard('api') صراحة لضمان التعامل مع جدول المستخدمين والتوكن
+        // محاولة الحصول على التوكن باستخدام Guard الـ API
         if (!$token = Auth::guard('api')->attempt($credentials)) {
             return false;
         }
@@ -37,55 +34,71 @@ class AuthService
     }
 
     /**
-     * تسجيل الخروج وإبطال التوكن
+     * تسجيل خروج آمن وإبطال التوكن
      */
-    public function logout()
+    public function logout(): void
     {
         try {
-            // إبطال التوكن الحالي من الـ Blacklist
-            JWTAuth::parseToken()->invalidate();
-            return true;
-        } catch (\Exception $e) {
-            return false;
+            if (Auth::guard('api')->check()) {
+                JWTAuth::parseToken()->invalidate();
+                Auth::guard('api')->logout();
+            }
+        } catch (Throwable $e) {
+            // تجاهل الأخطاء أثناء تسجيل الخروج لضمان تجربة مستخدم سلسة
         }
     }
 
     /**
-     * تجديد التوكن
+     * تجديد التوكن الحالي
      */
     public function refresh()
     {
         try {
             $newToken = JWTAuth::parseToken()->refresh();
             return $this->respondWithToken($newToken);
-        } catch (\Exception $e) {
+        } catch (Throwable $e) {
             return false;
         }
     }
 
     /**
-     * تنسيق الرد النهائي
+     * إرسال رابط إعادة تعيين كلمة المرور
+     * يعيد حالة الإرسال (نجاح أو فشل)
      */
-    protected function respondWithToken($token)
+    public function forgotPassword(array $data)
+    {
+        // يقوم بإنشاء توكن وإرسال إشعار للمستخدم تلقائياً
+        return Password::broker()->sendResetLink($data);
+    }
+
+    /**
+     * إعادة تعيين كلمة المرور الفعلية باستخدام التوكن المرسل
+     */
+    public function resetPassword(array $data): bool
+    {
+        // استخدام Password Broker للتحقق من التوكن وتغيير البيانات
+        $status = Password::broker()->reset(
+            $data,
+            function ($user, $password) {
+                $user->password = Hash::make($password);
+                $user->save();
+            }
+        );
+
+        // يعيد true فقط إذا كانت الحالة هي نجاح التغيير
+        return $status === Password::PASSWORD_RESET;
+    }
+
+    /**
+     * بناء هيكل رد التوكن الموحد
+     */
+    protected function respondWithToken(string $token): array
     {
         return [
             "access_token" => $token,
-            "token_type" => "bearer",
-            "expires_in" => JWTAuth::factory()->getTTL() * 60,
-            // جلب بيانات المستخدم المسجل حالياً عبر الـ guard الصحيح
-            "user" => Auth::guard('api')->user()
+            "token_type"   => "bearer",
+            "expires_in"   => config('jwt.ttl') * 60,
+            "user"         => Auth::guard('api')->user()
         ];
-    }
-
-    public function forgotPassword(array $data)
-    {
-        // سيتم برمجته لاحقاً عند إعداد نظام الإيميلات
-        return true;
-    }
-
-    public function resetPassword(array $data)
-    {
-        // سيتم برمجته لاحقاً
-        return true;
     }
 }
