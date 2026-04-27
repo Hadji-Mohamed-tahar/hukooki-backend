@@ -67,7 +67,7 @@ class UserDocumentService
         // 5. حفظ ملف PDF المولد في التخزين العام
         $pdfFileName = (string) Str::uuid() . ".pdf";
         $pdfPath = "pdfs/" . $pdfFileName;
-        
+
         Storage::disk("public")->put($pdfPath, $response->body());
 
         // 6. تسجيل العملية في قاعدة البيانات
@@ -94,5 +94,43 @@ class UserDocumentService
 
         // تحويل المسار إلى URL كامل (مثل: https://domain.com/storage/pdfs/uuid.pdf)
         return asset(Storage::url($userDocument->generated_pdf_path));
+    }
+
+    /**
+     * توليد محتوى HTML للمعاينة مع حقن البيانات أو وضع نقاط
+     */
+    public function previewHtml(int $documentId, array $inputData = []): string
+    {
+        // 1. جلب بيانات القالب من قاعدة البيانات
+        $document = Document::findOrFail($documentId);
+
+        // 2. التحقق من وجود ملف القالب في التخزين المحلي وقراءته
+        $templatePath = "templates/" . $document->template_name;
+        if (!Storage::disk("local")->exists($templatePath)) {
+            throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
+        }
+
+        $htmlContent = Storage::disk("local")->get($templatePath);
+
+        // 3. حقن البيانات المرسلة داخل القالب
+        // نتحقق أولاً أن المصفوفة ليست فارغة لتجنب الدخول في حلقة غير ضرورية
+        if (!empty($inputData)) {
+            foreach ($inputData as $key => $value) {
+                // النمط يعالج الحالات: {{key}} أو {{ key }} مع مسافات
+                $pattern = '/\{\{\s*' . preg_quote($key, '/') . '\s*\}\}/';
+
+                // استبدال المفتاح بالقيمة (نحول القيمة لنص لضمان عدم حدوث خطأ)
+                $htmlContent = preg_replace($pattern, strval($value), $htmlContent);
+            }
+        }
+
+        /**
+         * 4. مرحلة التنظيف (Cleaning & Filling)
+         * أي حقل لم يرسل المستخدم بيانات له، يتم استبداله بنقاط متساوية
+         * لكي يظهر القالب بتصميمه الأصلي كنموذج جاهز للتعبئة.
+         */
+        $htmlContent = preg_replace('/\{\{\s*.*?\s*\}\}/', '....................', $htmlContent);
+
+        return $htmlContent;
     }
 }

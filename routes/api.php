@@ -57,10 +57,13 @@ Route::middleware('auth:api')->group(function () {
     Route::get('documents/{document}', [DocumentController::class, 'show']);
     Route::get('documents/{document}/fields', [DocumentController::class, 'getFields']);
 
+    // معاينة الوثائق
+    Route::post('documents/{document}/preview', [UserDocumentController::class, 'preview']);
+
     // وثائق المستخدم (المولدة)
     Route::prefix('user-documents')->group(function () {
         Route::get('/', [UserDocumentController::class, 'index']);
-        Route::post('generate/{document}', [UserDocumentController::class, 'generate']); 
+        Route::post('generate/{document}', [UserDocumentController::class, 'generate']);
         Route::get('{userDocument}', [UserDocumentController::class, 'show']);
         Route::get('{userDocument}/download', [UserDocumentController::class, 'download']);
     });

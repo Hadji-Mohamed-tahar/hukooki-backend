@@ -28,7 +28,7 @@ class UserDocumentController extends Controller
     {
         $user = Auth::guard('api')->user();
         $userDocuments = $this->userDocumentService->getUserDocuments($user);
-        
+
         return $this->successResponse($userDocuments, "تم جلب قائمة وثائقك بنجاح");
     }
 
@@ -38,10 +38,10 @@ class UserDocumentController extends Controller
     public function show(int $userDocumentId): JsonResponse
     {
         $user = Auth::guard('api')->user();
-        
+
         // الخدمة يجب أن تتحقق من ملكية المستخدم للوثيقة
         $userDocument = $this->userDocumentService->getUserDocumentById($user, $userDocumentId);
-        
+
         return $this->successResponse($userDocument, "تم جلب تفاصيل الوثيقة");
     }
 
@@ -99,7 +99,7 @@ class UserDocumentController extends Controller
     public function download(int $userDocumentId): JsonResponse
     {
         $user = Auth::guard('api')->user();
-        
+
         // جلب الرابط المباشر للملف مع فحص الملكية
         $fileUrl = $this->userDocumentService->getPdfUrl($user, $userDocumentId);
 
@@ -107,4 +107,28 @@ class UserDocumentController extends Controller
             'download_url' => $fileUrl
         ], "تم استخراج رابط التحميل بنجاح");
     }
+
+
+    /**
+     * معاينة القالب قبل التوليد
+     */
+   /**
+ * معاينة القالب قبل التوليد (HTML Preview)
+ */
+public function preview(Request $request, int $documentId)
+{
+    $request->validate([
+        'input_data' => 'nullable|array',
+    ]);
+
+    // نمرر البيانات المرسلة، وإذا كانت فارغة نمرر مصفوفة فارغة افتراضياً
+    $inputData = $request->input('input_data', []);
+
+    // استدعاء الخدمة لمعالجة القالب
+    $html = $this->userDocumentService->previewHtml($documentId, $inputData);
+
+    // إرجاع الرد كـ HTML ليقوم المتصفح أو الـ WebView بعرضه مباشرة
+    return response($html, 200)
+        ->header('Content-Type', 'text/html; charset=UTF-8');
+}
 }
