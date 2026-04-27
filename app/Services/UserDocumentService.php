@@ -80,22 +80,57 @@ class UserDocumentService
     }
 
     /**
-     * الحصول على الرابط المباشر للملف مع فحص الملكية
+     * الحصول على رابط الوثيقة الخاصة (فحص ملكية + ملف مولد)
      */
-    public function getPdfUrl(User $user, int $userDocumentId): string
+    public function getPrivatePdfUrl(User $user, int $userDocumentId): string
     {
-        // فحص الملكية (Ownership Check)
         $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
 
-        // التأكد من وجود الملف في مجلد التخزين
         if (!Storage::disk('public')->exists($userDocument->generated_pdf_path)) {
-            throw new \Exception("عذراً، ملف الـ PDF غير موجود فعلياً على الخادم.");
+            throw new \Exception("عذراً، ملف الـ PDF الخاص غير موجود على الخادم.");
         }
 
-        // تحويل المسار إلى URL كامل (مثل: https://domain.com/storage/pdfs/uuid.pdf)
         return asset(Storage::url($userDocument->generated_pdf_path));
     }
 
+    /**
+     * توليد وتحميل الوثيقة العامة (القالب الفارغ)
+     */
+    public function generatePublicPdf(int $documentId): string
+    {
+        $document = Document::findOrFail($documentId);
+
+        $templatePath = "templates/" . $document->template_name;
+        if (!Storage::disk("local")->exists($templatePath)) {
+            throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
+        }
+
+        $templateContent = Storage::disk("local")->get($templatePath);
+
+        try {
+            // أضفنا timeout أطول قليلاً لضمان عدم الانقطاع
+            $response = Http::timeout(60)->post($this->pythonMicroserviceUrl . "/generate-pdf", [
+                "template_name"    => $document->template_name,
+                "data"             => (object)[], // تحويلها لـ object يضمن إرسالها كـ {} في JSON
+                "template_content" => $templateContent,
+            ]);
+
+            if ($response->failed()) {
+                // \Log::error("PDF Generation Failed: " . $response->body());
+                throw new \Exception("فشل توليد الملف من محرك بايثون.");
+            }
+
+            $pdfFileName = "public_template_" . $document->id . ".pdf";
+            $pdfPath = "public_documents/" . $pdfFileName;
+
+            Storage::disk("public")->put($pdfPath, $response->body());
+
+            return asset(Storage::url($pdfPath));
+        } catch (\Exception $e) {
+            // \Log::error("Connection Error: " . $e->getMessage());
+            throw new \Exception("تعذر الاتصال بمحرك التوليد، تأكد من تشغيل سيرفر بايثون على بورت 8001");
+        }
+    }
     /**
      * توليد محتوى HTML للمعاينة مع حقن البيانات أو وضع نقاط
      */

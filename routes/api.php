@@ -29,9 +29,6 @@ Route::prefix('auth')->group(function () {
 // دخول الأدمن
 Route::post('admin/auth/login', [AdminAuthController::class, 'login']);
 
-// تصنيفات الوثائق (مشاهدة فقط للجميع)
-Route::get('document-types', [DocumentTypeController::class, 'index']);
-Route::get('document-types/{documentType}', [DocumentTypeController::class, 'show']);
 
 /*
 |--------------------------------------------------------------------------
@@ -51,13 +48,17 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/', [ProfileController::class, 'show']);
         Route::put('/', [ProfileController::class, 'update']);
     });
+    // تصنيفات الوثائق (مشاهدة فقط للجميع)
+    Route::get('document-types', [DocumentTypeController::class, 'index']);
+    Route::get('document-types/{documentType}', [DocumentTypeController::class, 'show']);
+
 
     // تصفح القوالب المتاحة
     Route::get('documents', [DocumentController::class, 'index']);
     Route::get('documents/{document}', [DocumentController::class, 'show']);
     Route::get('documents/{document}/fields', [DocumentController::class, 'getFields']);
 
-    // معاينة الوثائق
+    // العامة والخاصة معاينة الوثائق
     Route::post('documents/{document}/preview', [UserDocumentController::class, 'preview']);
 
     // وثائق المستخدم (المولدة)
@@ -65,9 +66,12 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/', [UserDocumentController::class, 'index']);
         Route::post('generate/{document}', [UserDocumentController::class, 'generate']);
         Route::get('{userDocument}', [UserDocumentController::class, 'show']);
-        Route::get('{userDocument}/download', [UserDocumentController::class, 'download']);
+        Route::get('{userDocument}/download-private', [UserDocumentController::class, 'downloadPrivate']);
     });
-});
+    // 2. رابط تحميل الوثيقة العامة (القالب الأصلي الفارغ مثلاً)
+    Route::get('documents/{document}/download-public', [UserDocumentController::class, 'downloadPublic']);
+
+    });
 
 /*
 |--------------------------------------------------------------------------

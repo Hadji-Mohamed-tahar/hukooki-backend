@@ -94,41 +94,48 @@ class UserDocumentController extends Controller
     }
 
     /**
-     * الحصول على رابط تحميل ملف الـ PDF
+     * الحصول على رابط تحميل الوثيقة الخاصة (المولدة والمملوكة للمستخدم)
      */
-    public function download(int $userDocumentId): JsonResponse
+    public function downloadPrivate(int $userDocumentId): JsonResponse
     {
         $user = Auth::guard('api')->user();
-
-        // جلب الرابط المباشر للملف مع فحص الملكية
-        $fileUrl = $this->userDocumentService->getPdfUrl($user, $userDocumentId);
+        $fileUrl = $this->userDocumentService->getPrivatePdfUrl($user, $userDocumentId);
 
         return $this->successResponse([
             'download_url' => $fileUrl
-        ], "تم استخراج رابط التحميل بنجاح");
+        ], "تم استخراج رابط تحميل الوثيقة الخاصة بنجاح");
     }
 
+    /**
+     * الحصول على رابط تحميل الوثيقة العامة (توليد قالب فارغ)
+     */
+    public function downloadPublic(int $documentId): JsonResponse
+    {
+        // استدعاء السيرفس الذي يرسل طلب التوليد لبايثون ببيانات فارغة
+        $fileUrl = $this->userDocumentService->generatePublicPdf($documentId);
+
+        return $this->successResponse([
+            'download_url' => $fileUrl
+        ], "تم توليد القالب العام (الفارغ) بنجاح");
+    }
 
     /**
-     * معاينة القالب قبل التوليد
+     * معاينة القالب قبل التوليد (HTML Preview)
      */
-   /**
- * معاينة القالب قبل التوليد (HTML Preview)
- */
-public function preview(Request $request, int $documentId)
-{
-    $request->validate([
-        'input_data' => 'nullable|array',
-    ]);
+    public function preview(Request $request, int $documentId)
+    {
+        $request->validate([
+            'input_data' => 'nullable|array',
+        ]);
 
-    // نمرر البيانات المرسلة، وإذا كانت فارغة نمرر مصفوفة فارغة افتراضياً
-    $inputData = $request->input('input_data', []);
+        // نمرر البيانات المرسلة، وإذا كانت فارغة نمرر مصفوفة فارغة افتراضياً
+        $inputData = $request->input('input_data', []);
 
-    // استدعاء الخدمة لمعالجة القالب
-    $html = $this->userDocumentService->previewHtml($documentId, $inputData);
+        // استدعاء الخدمة لمعالجة القالب
+        $html = $this->userDocumentService->previewHtml($documentId, $inputData);
 
-    // إرجاع الرد كـ HTML ليقوم المتصفح أو الـ WebView بعرضه مباشرة
-    return response($html, 200)
-        ->header('Content-Type', 'text/html; charset=UTF-8');
-}
+        // إرجاع الرد كـ HTML ليقوم المتصفح أو الـ WebView بعرضه مباشرة
+        return response($html, 200)
+            ->header('Content-Type', 'text/html; charset=UTF-8');
+    }
 }
