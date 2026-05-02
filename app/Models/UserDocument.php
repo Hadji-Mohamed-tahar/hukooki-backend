@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class UserDocument extends Model
 {
@@ -19,6 +20,24 @@ class UserDocument extends Model
     protected $casts = [
         'input_data' => 'array',
     ];
+
+    /**
+     * Accessor: تحويل مسار الملف إلى رابط كامل عند جلب البيانات
+     * سيحول "pdfs/file.pdf" إلى "http://domain.com/storage/pdfs/file.pdf"
+     */
+    public function getGeneratedPdfPathAttribute($value)
+    {
+        if (!$value) {
+            return null;
+        }
+
+        // التحقق مما إذا كان المسار مخزناً كـ URL كامل أصلاً (لتجنب التكرار)
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        return asset(Storage::url($value));
+    }
 
     public function user()
     {
