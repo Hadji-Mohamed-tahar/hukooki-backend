@@ -69,7 +69,7 @@ Route::middleware('auth:api')->group(function () {
         Route::get('{userDocument}/download-private', [UserDocumentController::class, 'downloadPrivate']);
     });
     // 2. رابط تحميل الوثيقة العامة (القالب الأصلي الفارغ مثلاً)
-    Route::get('documents/{document}/download-public', [UserDocumentController::class, 'downloadPublic']);
+    Route::get('documents/{document}/download-template', [UserDocumentController::class, 'downloadPublic']);
 
     });
 
