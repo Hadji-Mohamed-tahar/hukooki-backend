@@ -24,7 +24,7 @@ return [
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],
-
+    'exposed_headers' => ['Authorization'],
     'exposed_headers' => [],
 
     'max_age' => 0,
