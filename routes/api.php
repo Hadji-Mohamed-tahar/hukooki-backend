@@ -113,3 +113,49 @@ Route::fallback(function () {
         'error_code' => 'ROUTE_NOT_FOUND'
     ], 404);
 });
+
+Route::get('download/private', function (\Illuminate\Http\Request $request) {
+
+    $path = $request->query('path');
+
+    if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
+        return response()->json([
+            'success' => false,
+            'message' => 'الملف غير موجود',
+            'error_code' => 'NOT_FOUND'
+        ], 404);
+    }
+
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($path);
+
+    return response()->download(
+        $fullPath,
+        'document.pdf',
+        [
+            'Content-Type' => 'application/pdf'
+        ]
+    );
+});
+
+Route::get('download/public', function (\Illuminate\Http\Request $request) {
+
+    $path = $request->query('path');
+
+    if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
+        return response()->json([
+            'success' => false,
+            'message' => 'الملف غير موجود',
+            'error_code' => 'NOT_FOUND'
+        ], 404);
+    }
+
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($path);
+
+    return response()->download(
+        $fullPath,
+        'public-template.pdf',
+        [
+            'Content-Type' => 'application/pdf'
+        ]
+    );
+});

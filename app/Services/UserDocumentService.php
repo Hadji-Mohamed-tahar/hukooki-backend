@@ -82,58 +82,61 @@ class UserDocumentService
     /**
      * الحصول على رابط الوثيقة الخاصة (فحص ملكية + ملف مولد)
      */
-    public function getPrivatePdfUrl(User $user, int $userDocumentId): string
-    {
-        $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
+   public function getPrivatePdfUrl(User $user, int $userDocumentId): string
+{
+    $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
 
-        // جلب القيمة الأصلية من قاعدة البيانات بدون Accessor
-        $pdfPath = $userDocument->getRawOriginal('generated_pdf_path');
+    // جلب المسار الخام من قاعدة البيانات
+    $pdfPath = $userDocument->getRawOriginal('generated_pdf_path');
 
-        if (!Storage::disk('public')->exists($pdfPath)) {
-            throw new \Exception("عذراً، ملف الـ PDF الخاص غير موجود على الخادم.");
-        }
-
-        return asset(Storage::url($pdfPath));
+    // التأكد من وجود الملف
+    if (!Storage::disk('public')->exists($pdfPath)) {
+        throw new \Exception("عذراً، ملف الـ PDF الخاص غير موجود على الخادم.");
     }
+
+    // ❗ بدل إعطاء رابط مباشر (asset)
+    // نحولها إلى رابط تحميل جبري عبر route
+    return url('/api/download/private?path=' . urlencode($pdfPath));
+}
 
     /**
      * توليد وتحميل الوثيقة العامة (القالب الفارغ)
      */
-    public function generatePublicPdf(int $documentId): string
-    {
-        $document = Document::findOrFail($documentId);
+   public function generatePublicPdf(int $documentId): string
+{
+    $document = Document::findOrFail($documentId);
 
-        $templatePath = "templates/" . $document->template_name;
-        if (!Storage::disk("local")->exists($templatePath)) {
-            throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
-        }
-
-        $templateContent = Storage::disk("local")->get($templatePath);
-
-        try {
-            // أضفنا timeout أطول قليلاً لضمان عدم الانقطاع
-            $response = Http::timeout(60)->post($this->pythonMicroserviceUrl . "/generate-pdf", [
-                "template_name"    => $document->template_name,
-                "data"             => (object)[], // تحويلها لـ object يضمن إرسالها كـ {} في JSON
-                "template_content" => $templateContent,
-            ]);
-
-            if ($response->failed()) {
-                // \Log::error("PDF Generation Failed: " . $response->body());
-                throw new \Exception("فشل توليد الملف من محرك بايثون.");
-            }
-
-            $pdfFileName = "public_template_" . $document->id . ".pdf";
-            $pdfPath = "public_documents/" . $pdfFileName;
-
-            Storage::disk("public")->put($pdfPath, $response->body());
-
-            return asset(Storage::url($pdfPath));
-        } catch (\Exception $e) {
-            // \Log::error("Connection Error: " . $e->getMessage());
-            throw new \Exception("تعذر الاتصال بمحرك التوليد، تأكد من تشغيل سيرفر بايثون على بورت 8001");
-        }
+    $templatePath = "templates/" . $document->template_name;
+    if (!Storage::disk("local")->exists($templatePath)) {
+        throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
     }
+
+    $templateContent = Storage::disk("local")->get($templatePath);
+
+    try {
+        // إرسال الطلب إلى خدمة Python
+        $response = Http::timeout(60)->post($this->pythonMicroserviceUrl . "/generate-pdf", [
+            "template_name"    => $document->template_name,
+            "data"             => (object)[],
+            "template_content" => $templateContent,
+        ]);
+
+        if ($response->failed()) {
+            throw new \Exception("فشل توليد الملف من محرك بايثون.");
+        }
+
+        $pdfFileName = "public_template_" . $document->id . ".pdf";
+        $pdfPath = "public_documents/" . $pdfFileName;
+
+        Storage::disk("public")->put($pdfPath, $response->body());
+
+        // 🔥 التعديل الجراحي هنا فقط
+        return url('/api/download/public?path=' . urlencode($pdfPath));
+
+    } catch (\Exception $e) {
+        throw new \Exception("تعذر الاتصال بمحرك التوليد، تأكد من تشغيل سيرفر بايثون على بورت 8001");
+    }
+}
     /**
      * توليد محتوى HTML للمعاينة مع حقن البيانات أو وضع نقاط
      */
