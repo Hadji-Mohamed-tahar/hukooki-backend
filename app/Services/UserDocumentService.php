@@ -86,11 +86,14 @@ class UserDocumentService
     {
         $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
 
-        if (!Storage::disk('public')->exists($userDocument->generated_pdf_path)) {
+        // جلب القيمة الأصلية من قاعدة البيانات بدون Accessor
+        $pdfPath = $userDocument->getRawOriginal('generated_pdf_path');
+
+        if (!Storage::disk('public')->exists($pdfPath)) {
             throw new \Exception("عذراً، ملف الـ PDF الخاص غير موجود على الخادم.");
         }
 
-        return asset(Storage::url($userDocument->generated_pdf_path));
+        return asset(Storage::url($pdfPath));
     }
 
     /**
