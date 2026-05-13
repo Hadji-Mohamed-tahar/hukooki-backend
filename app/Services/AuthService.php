@@ -23,13 +23,29 @@ class AuthService
     /**
      * تسجيل الدخول وجلب التوكن
      */
-    public function login(array $credentials)
+    public function login(array $data)
     {
-        // محاولة الحصول على التوكن باستخدام Guard الـ API
+        $password = $data['password'];
+
+        // تحديد الحقل حسب النوع
+        if ($data['type'] === 'email') {
+            $credentials = [
+                'email' => $data['email'],
+                'password' => $password,
+            ];
+        } elseif ($data['type'] === 'phone') {
+            $credentials = [
+                'phone' => $data['phone'],
+                'password' => $password,
+            ];
+        } else {
+            return false;
+        }
+
         if (!$token = Auth::guard('api')->attempt($credentials)) {
             return false;
         }
-        
+
         return $this->respondWithToken($token);
     }
 

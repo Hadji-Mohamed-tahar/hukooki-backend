@@ -35,7 +35,7 @@ class AuthController extends Controller
         ]);
 
         $user = $this->authService->register($validatedData);
-        
+
         return $this->successResponse($user, "تم تسجيل الحساب بنجاح", 201);
     }
 
@@ -45,18 +45,22 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $validatedData = $request->validate([
-            'username' => 'required|string',
+            'type'     => 'required|in:email,phone',
             'password' => 'required|string',
+            'email'    => 'required_if:type,email|email',
+            'phone'    => 'required_if:type,phone|string',
         ]);
 
-        // الأفضل أن يعيد الـ Service إما مصفوفة البيانات أو يرمي Exception
-        // لكن بما أن الـ Service قد يعيد null في حال فشل الدخول:
         $result = $this->authService->login($validatedData);
-        
+
         if (!$result) {
-            return $this->errorResponse("بيانات الدخول غير صحيحة", "UNAUTHORIZED_ACCESS", 401);
+            return $this->errorResponse(
+                "بيانات الدخول غير صحيحة",
+                "UNAUTHORIZED_ACCESS",
+                401
+            );
         }
-        
+
         return $this->successResponse($result, "تم تسجيل الدخول بنجاح");
     }
 
@@ -75,12 +79,12 @@ class AuthController extends Controller
     public function refresh(): JsonResponse
     {
         $result = $this->authService->refresh();
-        
+
         if (!$result) {
             // كود الخطأ أصبح TOKEN_EXPIRED ليتوافق مع نظامنا الجديد
             return $this->errorResponse("انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً", "SESSION_EXPIRED", 401);
         }
-        
+
         return $this->successResponse($result, "تم تجديد التوكن بنجاح");
     }
 
@@ -94,15 +98,15 @@ class AuthController extends Controller
         return $this->successResponse($user, "تم جلب بيانات المستخدم");
     }
 
-   /**
+    /**
      * نسيان كلمة المرور (إرسال الرابط/الكود)
      */
     public function forgotPassword(Request $request): JsonResponse
     {
         $request->validate(['email' => 'required|email']);
-        
+
         $this->authService->forgotPassword($request->only('email'));
-        
+
         return $this->successResponse(null, "إذا كان البريد مسجلاً لدينا، فستصلك رسالة قريباً");
     }
 
@@ -121,8 +125,8 @@ class AuthController extends Controller
 
         if (!$result) {
             return $this->errorResponse(
-                "الكود المستخدم غير صحيح أو منتهي الصلاحية", 
-                "INVALID_RESET_TOKEN", 
+                "الكود المستخدم غير صحيح أو منتهي الصلاحية",
+                "INVALID_RESET_TOKEN",
                 400
             );
         }
