@@ -24,7 +24,25 @@ class UserDocumentService
      */
     public function getUserDocuments(User $user)
     {
-        return $user->userDocuments()->with("document")->latest()->get();
+        $documents = $user->userDocuments()
+            ->with("document")
+            ->latest()
+            ->get();
+
+        // تعديل رابط التحميل لكل وثيقة
+        $documents->transform(function ($document) {
+
+            $pdfPath = $document->getRawOriginal('generated_pdf_path');
+
+            // تحويله إلى رابط تحميل جبري
+            $document->generated_pdf_path = url(
+                '/api/download/private?path=' . urlencode($pdfPath)
+            );
+
+            return $document;
+        });
+
+        return $documents;
     }
 
     /**
@@ -82,61 +100,60 @@ class UserDocumentService
     /**
      * الحصول على رابط الوثيقة الخاصة (فحص ملكية + ملف مولد)
      */
-   public function getPrivatePdfUrl(User $user, int $userDocumentId): string
-{
-    $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
+    public function getPrivatePdfUrl(User $user, int $userDocumentId): string
+    {
+        $userDocument = $user->userDocuments()->findOrFail($userDocumentId);
 
-    // جلب المسار الخام من قاعدة البيانات
-    $pdfPath = $userDocument->getRawOriginal('generated_pdf_path');
+        // جلب المسار الخام من قاعدة البيانات
+        $pdfPath = $userDocument->getRawOriginal('generated_pdf_path');
 
-    // التأكد من وجود الملف
-    if (!Storage::disk('public')->exists($pdfPath)) {
-        throw new \Exception("عذراً، ملف الـ PDF الخاص غير موجود على الخادم.");
+        // التأكد من وجود الملف
+        if (!Storage::disk('public')->exists($pdfPath)) {
+            throw new \Exception("عذراً، ملف الـ PDF الخاص غير موجود على الخادم.");
+        }
+
+        // ❗ بدل إعطاء رابط مباشر (asset)
+        // نحولها إلى رابط تحميل جبري عبر route
+        return url('/api/download/private?path=' . urlencode($pdfPath));
     }
-
-    // ❗ بدل إعطاء رابط مباشر (asset)
-    // نحولها إلى رابط تحميل جبري عبر route
-    return url('/api/download/private?path=' . urlencode($pdfPath));
-}
 
     /**
      * توليد وتحميل الوثيقة العامة (القالب الفارغ)
      */
-   public function generatePublicPdf(int $documentId): string
-{
-    $document = Document::findOrFail($documentId);
+    public function generatePublicPdf(int $documentId): string
+    {
+        $document = Document::findOrFail($documentId);
 
-    $templatePath = "templates/" . $document->template_name;
-    if (!Storage::disk("local")->exists($templatePath)) {
-        throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
-    }
-
-    $templateContent = Storage::disk("local")->get($templatePath);
-
-    try {
-        // إرسال الطلب إلى خدمة Python
-        $response = Http::timeout(60)->post($this->pythonMicroserviceUrl . "/generate-pdf", [
-            "template_name"    => $document->template_name,
-            "data"             => (object)[],
-            "template_content" => $templateContent,
-        ]);
-
-        if ($response->failed()) {
-            throw new \Exception("فشل توليد الملف من محرك بايثون.");
+        $templatePath = "templates/" . $document->template_name;
+        if (!Storage::disk("local")->exists($templatePath)) {
+            throw new \Exception("عذراً، ملف قالب الوثيقة غير موجود على الخادم.");
         }
 
-        $pdfFileName = "public_template_" . $document->id . ".pdf";
-        $pdfPath = "public_documents/" . $pdfFileName;
+        $templateContent = Storage::disk("local")->get($templatePath);
 
-        Storage::disk("public")->put($pdfPath, $response->body());
+        try {
+            // إرسال الطلب إلى خدمة Python
+            $response = Http::timeout(60)->post($this->pythonMicroserviceUrl . "/generate-pdf", [
+                "template_name"    => $document->template_name,
+                "data"             => (object)[],
+                "template_content" => $templateContent,
+            ]);
 
-        // 🔥 التعديل الجراحي هنا فقط
-        return url('/api/download/public?path=' . urlencode($pdfPath));
+            if ($response->failed()) {
+                throw new \Exception("فشل توليد الملف من محرك بايثون.");
+            }
 
-    } catch (\Exception $e) {
-        throw new \Exception("تعذر الاتصال بمحرك التوليد، تأكد من تشغيل سيرفر بايثون على بورت 8001");
+            $pdfFileName = "public_template_" . $document->id . ".pdf";
+            $pdfPath = "public_documents/" . $pdfFileName;
+
+            Storage::disk("public")->put($pdfPath, $response->body());
+
+            // 🔥 التعديل الجراحي هنا فقط
+            return url('/api/download/public?path=' . urlencode($pdfPath));
+        } catch (\Exception $e) {
+            throw new \Exception("تعذر الاتصال بمحرك التوليد، تأكد من تشغيل سيرفر بايثون على بورت 8001");
+        }
     }
-}
     /**
      * توليد محتوى HTML للمعاينة مع حقن البيانات أو وضع نقاط
      */
